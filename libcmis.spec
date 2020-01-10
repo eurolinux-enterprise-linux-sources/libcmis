@@ -2,7 +2,7 @@
 
 Name: libcmis
 Version: 0.3.1
-Release: 10%{?dist}
+Release: 8%{?dist}
 Summary: A C++ client library for the CMIS interface
 
 Group: System Environment/Libraries
@@ -94,12 +94,6 @@ rm -f %{buildroot}/%{_libdir}/*.la
 
 
 %changelog
-* Fri Jan 24 2014 Daniel Mach <dmach@redhat.com> - 0.3.1-10
-- Mass rebuild 2014-01-24
-
-* Fri Dec 27 2013 Daniel Mach <dmach@redhat.com> - 0.3.1-9
-- Mass rebuild 2013-12-27
-
 * Fri Aug 30 2013 David Tardon <dtardon@redhat.com> - 0.3.1-8
 - Resolves: rhbz#1000819 pkgconfig file for libcmis-c is broken
 
