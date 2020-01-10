@@ -38,14 +38,38 @@ using libcmis::PropertyPtrMap;
 namespace test
 {
 
-    xmlNodePtr getXmlNode( string str )
+    XmlNodeRef::XmlNodeRef( xmlNodePtr node, boost::shared_ptr< xmlDoc > doc )
+        : m_node( node )
+        , m_doc( doc )
+    {
+    }
+
+    XmlNodeRef::XmlNodeRef( const XmlNodeRef& other )
+        : m_node( other.m_node )
+        , m_doc( other.m_doc )
+    {
+    }
+
+    XmlNodeRef& XmlNodeRef::operator=( const XmlNodeRef& other )
+    {
+        m_node = other.m_node;
+        m_doc = other.m_doc;
+        return *this;
+    }
+
+    XmlNodeRef::operator xmlNodePtr( ) const
+    {
+        return m_node;
+    }
+
+    XmlNodeRef getXmlNode( string str )
     {
         xmlNodePtr node = NULL;
-        xmlDocPtr doc = xmlReadMemory( str.c_str( ), str.size( ), "tester", NULL, 0 );
-        if ( NULL != doc )
-            node = xmlDocGetRootElement( doc );
+        const boost::shared_ptr< xmlDoc > doc( xmlReadMemory( str.c_str( ), str.size( ), "tester", NULL, 0 ), xmlFreeDoc );
+        if ( bool( doc ) )
+            node = xmlDocGetRootElement( doc.get() );
 
-        return node;
+        return XmlNodeRef( node, doc );
     }
 
     const char* getXmlns( )
@@ -79,6 +103,7 @@ namespace test
         {
             xmlXPathContextPtr xpathCtx = xmlXPathNewContext( doc );
             libcmis::registerNamespaces( xpathCtx );
+            libcmis::registerCmisWSNamespaces( xpathCtx );
 
             if ( NULL != xpathCtx )
             {
@@ -90,15 +115,16 @@ namespace test
                     if ( xpathObj->nodesetval )
                         nbResults = xpathObj->nodesetval->nodeNr;
 
-                    if ( nbResults > 0 )
+                    for ( int i = 0; i < nbResults; ++i )
                     {
-                        xmlNodePtr node = xpathObj->nodesetval->nodeTab[0];
+                        xmlNodePtr node = xpathObj->nodesetval->nodeTab[i];
                         xmlBufferPtr buf = xmlBufferCreate( );
                         xmlNodeDump( buf, doc, node, 0, 0 );
-                        result = string( ( char * )xmlBufferContent( buf ) );
+                        result += string( ( char * )xmlBufferContent( buf ) );
                         xmlBufferFree( buf );
                     }
                 }
+                xmlXPathFreeObject( xpathObj);
             }
             xmlXPathFreeContext( xpathCtx );
         }
@@ -125,8 +151,8 @@ namespace test
         nameValues.push_back( docName );
         libcmis::PropertyPtr nameProperty( new libcmis::Property( it->second, nameValues ) );
         props.insert( pair< string, libcmis::PropertyPtr >( string( "cmis:name" ), nameProperty ) );
-       
-        // set the object type 
+
+        // set the object type
         it = propTypes.find( string( "cmis:objectTypeId" ) );
         vector< string > typeValues;
         typeValues.push_back( "VersionableType" );
@@ -140,5 +166,21 @@ namespace test
         string filename( "name.txt" );
 
         return parent->createDocument( props, os, contentType, filename );
+    }
+
+    void loadFromFile( const char* path, string& buf )
+    {
+        ifstream in( path );
+
+        in.seekg( 0, ios::end );
+        int length = in.tellg( );
+        in.seekg( 0, ios::beg );
+
+        char* buffer = new char[length];
+        in.read( buffer, length );
+        in.close( );
+
+        buf = string( buffer, length );
+        delete[] buffer;
     }
 }

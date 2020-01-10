@@ -1,14 +1,13 @@
-%global apiversion 0.4
+%global apiversion 0.5
 
 Name: libcmis
-Version: 0.4.1
-Release: 5%{?dist}
+Version: 0.5.1
+Release: 2%{?dist}
 Summary: A C++ client library for CM interfaces
 
-Group: System Environment/Libraries
 License: GPLv2+ or LGPLv2+ or MPLv1.1
-URL: http://sourceforge.net/projects/libcmis/
-Source: http://downloads.sourceforge.net/%{name}/%{name}-%{version}.tar.gz
+URL: https://github.com/tdf/libcmis
+Source: https://github.com/tdf/libcmis/releases/download/v%{version}/%{name}-%{version}.tar.gz
 
 BuildRequires: boost-devel
 BuildRequires: pkgconfig(cppunit)
@@ -16,9 +15,11 @@ BuildRequires: pkgconfig(libcurl)
 BuildRequires: pkgconfig(libxml-2.0)
 BuildRequires: xmlto
 
-Patch0: 0001-Fix-int-bool-confusion-on-big-endian-architectures.patch
-Patch1: 0001-coverity-return-const-string.patch
-Patch2: 0001-fix-mismatching-exceptions.patch
+Patch0: 0001-Add-new-Google-Drive-OAuth-2.0-login-procedure.patch
+Patch1: 0002-Add-new-mokup-login-pages.patch
+Patch2: 0003-Fix-test-in-test-factory.patch
+Patch3: 0004-Fix-test-in-test-gdrive.patch
+Patch4: 0005-Fix-test-in-test-onedrive.patch
 
 %description
 LibCMIS is a C++ client library for working with CM (content management)
@@ -29,7 +30,6 @@ Another supported interface is Google Drive.
 
 %package devel
 Summary: Development files for %{name}
-Group: Development/Libraries
 Requires: %{name}%{?_isa} = %{version}-%{release}
 
 %description devel
@@ -38,7 +38,6 @@ developing applications that use %{name}.
 
 %package tools
 Summary: Command line tool to access CMIS
-Group: Applications/Publishing
 Requires: %{name}%{?_isa} = %{version}-%{release}
 
 %description tools
@@ -50,7 +49,7 @@ command line.
 
 %build
 %configure --disable-silent-rules --disable-static --disable-werror \
-    --disable-long-tests DOCBOOK2MAN='xmlto man'
+    DOCBOOK2MAN='xmlto man'
 sed -i \
     -e 's|^hardcode_libdir_flag_spec=.*|hardcode_libdir_flag_spec=""|g' \
     -e 's|^runpath_var=LD_RUN_PATH|runpath_var=DIE_RPATH_DIE|g' \
@@ -65,16 +64,12 @@ rm -f %{buildroot}/%{_libdir}/*.la
 %postun -p /sbin/ldconfig
 
 %check
-# TODO: Something throws an unexpected libcmis::Exception, causing
-# std::terminate. Investigate later when I have some time (and an arm
-# box)
-%ifnarch armv7hl
 export LD_LIBRARY_PATH=%{buildroot}/%{_libdir}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
-make check
-%endif
+make %{?_smp_mflags} check
 
 %files
-%doc AUTHORS COPYING.* NEWS README
+%doc AUTHORS NEWS
+%license COPYING.*
 %{_libdir}/%{name}-%{apiversion}.so.*
 %{_libdir}/%{name}-c-%{apiversion}.so.*
 
@@ -92,6 +87,20 @@ make check
 %{_mandir}/man1/cmis-client.1*
 
 %changelog
+* Mon May 16 2016 David Tardon <dtardon@redhat.com> - 0.5.1-2
+- Resolves: rhbz#1330591 fix Google Drive login
+- Related: rhbz#1330591 fix changelog entry
+
+* Fri Mar 04 2016 David Tardon <dtardon@redhat.com> - 0.5.1-1
+- Related: rhbz#1290152 new upstream release
+
+* Tue Mar 01 2016 David Tardon <dtardon@redhat.com> - 0.5.0-2
+- Related: rhbz#1290152 autoreconf is not needed
+- Related: rhbz#1290152 add a bunch of fixes found by coverity
+
+* Mon Feb 22 2016 David Tardon <dtardon@redhat.com> - 0.5.0-1
+- Resolves: rhbz#1290152 rebase to 0.5.0
+
 * Fri Sep 05 2014 David Tardon <dtardon@redhat.com> - 0.4.1-5
 - Related: rhbz#1132065 coverity: fix mismatching exceptions
 

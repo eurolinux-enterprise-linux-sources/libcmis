@@ -81,9 +81,24 @@ bool libcmis_object_isImmutable( libcmis_ObjectPtr object );
 
 /** The resulting value needs to be free'd.
   */
+libcmis_vector_string_Ptr libcmis_object_getSecondaryTypes( libcmis_ObjectPtr object );
+
+/** The resulting value needs to be free'd.
+  */
 char* libcmis_object_getThumbnailUrl( libcmis_ObjectPtr object );
 
 libcmis_vector_rendition_Ptr libcmis_object_getRenditions( libcmis_ObjectPtr object, libcmis_ErrorPtr error );
+
+libcmis_ObjectPtr
+libcmis_object_addSecondaryType( libcmis_ObjectPtr object,
+                                 const char* id,
+                                 libcmis_vector_property_Ptr properties,
+                                 libcmis_ErrorPtr error );
+
+libcmis_ObjectPtr
+libcmis_object_removeSecondaryType( libcmis_ObjectPtr object,
+                                    const char* id,
+                                    libcmis_ErrorPtr error );
 
 libcmis_vector_property_Ptr libcmis_object_getProperties( libcmis_ObjectPtr object );
 libcmis_PropertyPtr libcmis_object_getProperty( libcmis_ObjectPtr object, const char* name );

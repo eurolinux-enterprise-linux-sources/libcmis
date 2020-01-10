@@ -64,6 +64,7 @@ class AtomTest : public CppUnit::TestFixture
         void getTypeChildrenTest( );
         void getObjectTest( );
         void getDocumentTest( );
+        void getDocumentRelationshipsTest( );
         void getUnexistantObjectTest( );
         void getFolderTest( );
         void getFolderBadTypeTest( );
@@ -77,6 +78,7 @@ class AtomTest : public CppUnit::TestFixture
         void getContentStreamTest( );
         void setContentStreamTest( );
         void updatePropertiesTest( );
+        void updatePropertiesEmptyTest( );
         void createFolderTest( );
         void createFolderBadTypeTest( );
         void createDocumentTest( );
@@ -101,6 +103,7 @@ class AtomTest : public CppUnit::TestFixture
         CPPUNIT_TEST( getTypeChildrenTest );
         CPPUNIT_TEST( getObjectTest );
         CPPUNIT_TEST( getDocumentTest );
+        CPPUNIT_TEST( getDocumentRelationshipsTest );
         CPPUNIT_TEST( getUnexistantObjectTest );
         CPPUNIT_TEST( getFolderTest );
         CPPUNIT_TEST( getFolderBadTypeTest );
@@ -114,6 +117,7 @@ class AtomTest : public CppUnit::TestFixture
         CPPUNIT_TEST( getContentStreamTest );
         CPPUNIT_TEST( setContentStreamTest );
         CPPUNIT_TEST( updatePropertiesTest );
+        CPPUNIT_TEST( updatePropertiesEmptyTest );
         CPPUNIT_TEST( createFolderTest );
         CPPUNIT_TEST( createFolderBadTypeTest );
         CPPUNIT_TEST( createDocumentTest );
@@ -127,7 +131,6 @@ class AtomTest : public CppUnit::TestFixture
         CPPUNIT_TEST_SUITE_END( );
 
         AtomPubSession getTestSession( string username = string( ), string password = string( ) );
-        void loadFromFile( const char* path, string& buf );
 };
 
 class TestAuthProvider : public libcmis::AuthProvider
@@ -192,7 +195,7 @@ void AtomTest::sessionCreationTest( )
             !session.getAtomRepository()->getUriTemplate( UriTemplate::ObjectByPath ).empty() );
     CPPUNIT_ASSERT_MESSAGE( "typebyid URI template URL missing",
             !session.getAtomRepository()->getUriTemplate( UriTemplate::TypeById ).empty() );
-    
+
     // The optional URI template URL is present on InMemory, so check it
     CPPUNIT_ASSERT_MESSAGE( "query URI template URL missing",
             !session.getAtomRepository()->getUriTemplate( UriTemplate::Query ).empty() );
@@ -240,7 +243,7 @@ void AtomTest::sessionCreationProxyTest( )
     CPPUNIT_ASSERT_EQUAL_MESSAGE( "NoProxy not set", noProxy, string( curl_mockup_getNoProxy( session.m_curlHandle ) ) );
     CPPUNIT_ASSERT_EQUAL_MESSAGE( "Proxy User not set", proxyUser, string( curl_mockup_getProxyUser( session.m_curlHandle ) ) );
     CPPUNIT_ASSERT_EQUAL_MESSAGE( "Proxy Pass not set", proxyPass, string( curl_mockup_getProxyPass( session.m_curlHandle ) ) );
-    
+
     // Reset proxy settings to default for next tests
     libcmis::SessionFactory::setProxySettings( string(), string(), string(), string() );
 }
@@ -268,7 +271,7 @@ void AtomTest::authCallbackTest( )
                     string( "User cancelled authentication request" ), string( e.what() ) );
         }
     }
-    
+
     // Test provided authentication
     {
         libcmis::AuthProviderPtr authProvider( new TestAuthProvider( false ) );
@@ -286,7 +289,7 @@ void AtomTest::invalidSSLTest( )
 
     string badCert( "A really invalid SSL Certificate" );
     curl_mockup_setSSLBadCertificate( badCert.c_str() );
-  
+
     // Test validated certificate case
     {
         libcmis::CertValidationHandlerPtr handler( new TestCertValidationHandler( false ) );
@@ -441,6 +444,38 @@ void AtomTest::getDocumentTest( )
     CPPUNIT_ASSERT_MESSAGE( "Content length is missing", 12345 == document->getContentLength( ) );
 }
 
+void AtomTest::getDocumentRelationshipsTest( )
+{
+    curl_mockup_reset( );
+    curl_mockup_addResponse( "http://mockup/mock/id", "id=test-document", "GET", DATA_DIR "/atom/test-document-relationships.xml" );
+    curl_mockup_addResponse( "http://mockup/mock/type", "id=DocumentLevel2", "GET", DATA_DIR "/atom/type-docLevel2.xml" );
+    curl_mockup_setCredentials( SERVER_USERNAME, SERVER_PASSWORD );
+
+    AtomPubSession session = getTestSession( SERVER_USERNAME, SERVER_PASSWORD );
+
+    string expectedId( "test-document" );
+    libcmis::ObjectPtr actual = session.getObject( expectedId );
+
+    // Do we have a document?
+    libcmis::DocumentPtr document = boost::dynamic_pointer_cast< libcmis::Document >( actual );
+    CPPUNIT_ASSERT_MESSAGE( "Fetched object should be an instance of libcmis::DocumentPtr",
+            NULL != document );
+
+    // Test the document properties
+    CPPUNIT_ASSERT_EQUAL_MESSAGE( "Wrong document ID", expectedId, document->getId( ) );
+    CPPUNIT_ASSERT_EQUAL_MESSAGE( "Wrong document name", string( "Test Document" ), document->getName( ) );
+    CPPUNIT_ASSERT_EQUAL_MESSAGE( "Wrong document type", string( "text/plain" ), document->getContentType( ) );
+    CPPUNIT_ASSERT_EQUAL_MESSAGE( "Wrong base type", string( "cmis:document" ), document->getBaseType( ) );
+
+    CPPUNIT_ASSERT_MESSAGE( "CreatedBy is missing", !document->getCreatedBy( ).empty( ) );
+    CPPUNIT_ASSERT_MESSAGE( "CreationDate is missing", !document->getCreationDate( ).is_not_a_date_time() );
+    CPPUNIT_ASSERT_MESSAGE( "LastModifiedBy is missing", !document->getLastModifiedBy( ).empty( ) );
+    CPPUNIT_ASSERT_MESSAGE( "LastModificationDate is missing", !document->getLastModificationDate( ).is_not_a_date_time() );
+    CPPUNIT_ASSERT_MESSAGE( "ChangeToken is missing", !document->getChangeToken( ).empty( ) );
+
+    CPPUNIT_ASSERT_MESSAGE( "Content length is missing", 12345 == document->getContentLength( ) );
+}
+
 void AtomTest::getFolderTest( )
 {
     curl_mockup_reset( );
@@ -457,6 +492,10 @@ void AtomTest::getFolderTest( )
     CPPUNIT_ASSERT_EQUAL_MESSAGE( "Wrong folder ID", expectedId, actual->getId( ) );
     CPPUNIT_ASSERT_EQUAL_MESSAGE( "Wrong folder name", string( "Valid Object" ), actual->getName( ) );
     CPPUNIT_ASSERT_EQUAL_MESSAGE( "Wrong folder path", string( "/Valid Object" ), actual->getPath( ) );
+    CPPUNIT_ASSERT_EQUAL_MESSAGE( "Wrong folder paths",
+                                  string( "/Valid Object" ), actual->getPaths( )[0] );
+    CPPUNIT_ASSERT_EQUAL_MESSAGE( "Folder should have only one path",
+                                  size_t(1), actual->getPaths( ).size() );
     CPPUNIT_ASSERT_EQUAL_MESSAGE( "Wrong base type", string( "cmis:folder" ), actual->getBaseType( ) );
     CPPUNIT_ASSERT_MESSAGE( "Missing folder parent", actual->getFolderParent( ).get( ) );
     CPPUNIT_ASSERT_MESSAGE( "Not a root folder", !actual->isRootFolder() );
@@ -551,14 +590,17 @@ void AtomTest::getRenditionsTest( )
 
     std::vector< libcmis::RenditionPtr > renditions = actual->getRenditions( );
     CPPUNIT_ASSERT_EQUAL_MESSAGE( "Bad renditions count", size_t( 2 ), renditions.size( ) );
+    
+    libcmis::RenditionPtr rendition = renditions[0];
+    CPPUNIT_ASSERT( rendition->isThumbnail() );
 
-    libcmis::RenditionPtr rendition = renditions[1];
+    rendition = renditions[1];
     CPPUNIT_ASSERT_EQUAL_MESSAGE( "Bad rendition mime type", string( "application/pdf" ), rendition->getMimeType( ) );
     CPPUNIT_ASSERT_EQUAL_MESSAGE( "Bad rendition href", string( "http://mockup/mock/renditions?id=test-document-rendition2" ), rendition->getUrl() );
     CPPUNIT_ASSERT_EQUAL_MESSAGE( "Bad rendition length - default case", long( -1 ), rendition->getLength( ) );
     CPPUNIT_ASSERT_EQUAL_MESSAGE( "Bad rendition Title", string( "Doc as PDF" ), rendition->getTitle( ) );
     CPPUNIT_ASSERT_EQUAL_MESSAGE( "Bad rendition kind", string( "pdf" ), rendition->getKind( ) );
-    
+
     CPPUNIT_ASSERT_EQUAL_MESSAGE( "Bad rendition length - filled case", long( 40385 ), renditions[0]->getLength( ) );
 }
 
@@ -648,11 +690,18 @@ void AtomTest::getDocumentParentsTest( )
 
     libcmis::ObjectPtr object = session.getObject( "test-document" );
     libcmis::DocumentPtr document = boost::dynamic_pointer_cast< libcmis::Document >( object );
-    
+
     CPPUNIT_ASSERT_MESSAGE( "Document expected", document != NULL );
     vector< libcmis::FolderPtr > actual = document->getParents( );
 
     CPPUNIT_ASSERT_EQUAL_MESSAGE( "Bad number of parents", size_t( 2 ), actual.size() );
+
+    vector< string > paths = document->getPaths();
+    CPPUNIT_ASSERT_EQUAL_MESSAGE( "Bad number of paths", size_t( 2 ), paths.size() );
+    CPPUNIT_ASSERT_EQUAL_MESSAGE( "Bad document paths",
+                                  string( "/Parent 1/Test Document" ), paths[0] );
+    CPPUNIT_ASSERT_EQUAL_MESSAGE( "Bad document paths",
+                                  string( "/Parent 2/Test Document" ), paths[1] );
 }
 
 void AtomTest::getContentStreamTest( )
@@ -705,7 +754,7 @@ void AtomTest::setContentStreamTest( )
         boost::shared_ptr< ostream > os ( new stringstream ( expectedContent ) );
         string filename( "name.txt" );
         document->setContentStream( os, "text/plain", filename );
-        
+
         CPPUNIT_ASSERT_MESSAGE( "Object not refreshed during setContentStream", object->getRefreshTimestamp( ) > 0 );
 
         // Check the content has been properly uploaded
@@ -769,6 +818,31 @@ void AtomTest::updatePropertiesTest( )
     CPPUNIT_ASSERT_EQUAL_MESSAGE( "Wrong value after refresh", expectedValue, propIt->second->getStrings().front( ) );
 }
 
+void AtomTest::updatePropertiesEmptyTest( )
+{
+    curl_mockup_reset( );
+    curl_mockup_addResponse( "http://mockup/mock/id", "id=test-document", "GET", DATA_DIR "/atom/test-document.xml" );
+    curl_mockup_addResponse( "http://mockup/mock/type", "id=DocumentLevel2", "GET", DATA_DIR "/atom/type-docLevel2.xml" );
+    curl_mockup_setCredentials( SERVER_USERNAME, SERVER_PASSWORD );
+
+    AtomPubSession session = getTestSession( SERVER_USERNAME, SERVER_PASSWORD );
+
+    // Values for the test
+    libcmis::ObjectPtr object = session.getObject( "test-document" );
+
+    // Just leave the map empty and update
+    PropertyPtrMap emptyProperties;
+    libcmis::ObjectPtr updated = object->updateProperties( emptyProperties );
+
+    // Check that no HTTP request was sent
+    int count = curl_mockup_getRequestsCount( "http://mockup/mock/id",
+                                              "id=test-document", "PUT" );
+    CPPUNIT_ASSERT_EQUAL_MESSAGE( "No HTTP request should have been sent", 0, count );
+
+    // Check that the object we got is the same than previous one
+    CPPUNIT_ASSERT_EQUAL_MESSAGE( "Wrong change token", object->getChangeToken(), updated->getChangeToken() );
+}
+
 void AtomTest::createFolderTest( )
 {
     curl_mockup_reset( );
@@ -793,8 +867,8 @@ void AtomTest::createFolderTest( )
     nameValues.push_back( expectedName );
     libcmis::PropertyPtr nameProperty( new libcmis::Property( it->second, nameValues ) );
     props.insert( pair< string, libcmis::PropertyPtr >( string( "cmis:name" ), nameProperty ) );
-   
-    // set the object type 
+
+    // set the object type
     it = propTypes.find( string( "cmis:objectTypeId" ) );
     vector< string > typeValues;
     typeValues.push_back( "cmis:folder" );
@@ -831,7 +905,8 @@ void AtomTest::createFolderTest( )
 void AtomTest::createFolderBadTypeTest( )
 {
     curl_mockup_reset( );
-    curl_mockup_addResponse( "http://mockup/mock/children", "id=root-folder", "POST", DATA_DIR "/atom/create-folder-bad-type.xml" );
+    curl_mockup_addResponse( "http://mockup/mock/children", "id=root-folder", "POST",
+                             "Not a cmis:folder derived type", 409, false );
     curl_mockup_addResponse( "http://mockup/mock/id", "id=root-folder", "GET", DATA_DIR "/atom/root-folder.xml" );
     curl_mockup_addResponse( "http://mockup/mock/type", "id=cmis:folder", "GET", DATA_DIR "/atom/type-folder.xml" );
     curl_mockup_addResponse( "http://mockup/mock/type", "id=cmis:document", "GET", DATA_DIR "/atom/type-document.xml" );
@@ -853,8 +928,8 @@ void AtomTest::createFolderBadTypeTest( )
     nameValues.push_back( expectedName );
     libcmis::PropertyPtr nameProperty( new libcmis::Property( it->second, nameValues ) );
     props.insert( pair< string, libcmis::PropertyPtr >( string( "cmis:name" ), nameProperty ) );
-   
-    // set the object type 
+
+    // set the object type
     it = propTypes.find( string( "cmis:objectTypeId" ) );
     vector< string > typeValues;
     typeValues.push_back( "cmis:document" );
@@ -870,8 +945,6 @@ void AtomTest::createFolderBadTypeTest( )
     catch ( libcmis::Exception& e )
     {
         CPPUNIT_ASSERT_EQUAL_MESSAGE( "Wrong error type", string( "constraint" ), e.getType() );
-        CPPUNIT_ASSERT_MESSAGE( "Bad exception message",
-                string( e.what( ) ).find( "Created object is not a folder: " ) != string::npos );
     }
 
     // Check that the proper request has been sent
@@ -921,8 +994,8 @@ void AtomTest::createDocumentTest( )
     nameValues.push_back( expectedName );
     libcmis::PropertyPtr nameProperty( new libcmis::Property( it->second, nameValues ) );
     props.insert( pair< string, libcmis::PropertyPtr >( string( "cmis:name" ), nameProperty ) );
-   
-    // set the object type 
+
+    // set the object type
     it = propTypes.find( string( "cmis:objectTypeId" ) );
     vector< string > typeValues;
     typeValues.push_back( "cmis:document" );
@@ -1006,7 +1079,7 @@ void AtomTest::deleteFolderTreeTest( )
     // Test the sent request
     const struct HttpRequest* request = curl_mockup_getRequest( "http://mockup/mock/descendants", "id=valid-object", "DELETE" );
     CPPUNIT_ASSERT_MESSAGE( "DELETE request not sent", request );
-    delete request;
+    curl_mockup_HttpRequest_free( request );
 }
 
 void AtomTest::checkOutTest( )
@@ -1023,7 +1096,7 @@ void AtomTest::checkOutTest( )
     libcmis::Document* document = dynamic_cast< libcmis::Document* >( object.get() );
 
     libcmis::DocumentPtr pwc = document->checkOut( );
-    
+
     CPPUNIT_ASSERT_MESSAGE( "Missing returned Private Working Copy", pwc.get( ) != NULL );
 
     PropertyPtrMap::iterator it = pwc->getProperties( ).find( string( "cmis:isVersionSeriesCheckedOut" ) );
@@ -1050,6 +1123,7 @@ void AtomTest::cancelCheckOutTest( )
     // Check that the DELETE request was sent out
     const struct HttpRequest* request = curl_mockup_getRequest( "http://mockup/mock/id", "id=working-copy", "DELETE" );
     CPPUNIT_ASSERT_MESSAGE( "DELETE request not sent", request );
+    curl_mockup_HttpRequest_free( request );
 }
 
 void AtomTest::checkInTest( )
@@ -1088,6 +1162,8 @@ void AtomTest::checkInTest( )
     CPPUNIT_ASSERT_MESSAGE( "Sent checkin request has wrong major parameter", url.find("major=true") != string::npos );
     CPPUNIT_ASSERT_MESSAGE( "Sent checkin request has wrong checkinComment parameter", url.find( "checkinComment=" + comment ) != string::npos );
     CPPUNIT_ASSERT_MESSAGE( "Sent checkin request has no checkin parameter", url.find("checkin=true") != string::npos );
+
+    curl_mockup_HttpRequest_free( request );
 }
 
 void AtomTest::getAllVersionsTest( )
@@ -1105,7 +1181,7 @@ void AtomTest::getAllVersionsTest( )
     libcmis::DocumentPtr doc = boost::dynamic_pointer_cast< libcmis::Document >( object );
 
     // Get all the versions (method to check)
-    vector< libcmis::DocumentPtr > versions = doc->getAllVersions( ); 
+    vector< libcmis::DocumentPtr > versions = doc->getAllVersions( );
 
     // Checks
     CPPUNIT_ASSERT_EQUAL_MESSAGE( "Wrong number of versions", size_t( 2 ), versions.size( ) );
@@ -1123,7 +1199,7 @@ void AtomTest::moveTest( )
     curl_mockup_setCredentials( SERVER_USERNAME, SERVER_PASSWORD );
 
     AtomPubSession session = getTestSession( SERVER_USERNAME, SERVER_PASSWORD );
-    
+
     libcmis::ObjectPtr object = session.getObject( "test-document" );
     libcmis::Document* document = dynamic_cast< libcmis::Document* >( object.get() );
 
@@ -1145,33 +1221,19 @@ void AtomTest::moveTest( )
                                 "<cmis:value>test-document</cmis:value>"
                             "</cmis:propertyId>";
     CPPUNIT_ASSERT_EQUAL_MESSAGE( "Wrong request object sent", expectedObject, actualObject );
+
+    curl_mockup_HttpRequest_free( request );
 }
 
 AtomPubSession AtomTest::getTestSession( string username, string password )
 {
     AtomPubSession session;
     string buf;
-    loadFromFile( DATA_DIR "/atom/workspaces.xml", buf );
+    test::loadFromFile( DATA_DIR "/atom/workspaces.xml", buf );
     session.parseServiceDocument( buf );
-    
+
     session.m_username = username;
     session.m_password = password;
 
     return session;
-}
-
-void AtomTest::loadFromFile( const char* path, string& buf )
-{
-    ifstream in( path );
-
-    in.seekg( 0, ios::end );
-    int length = in.tellg( );
-    in.seekg( 0, ios::beg );
-
-    char* buffer = new char[length];
-    in.read( buffer, length );
-    in.close( );
-
-    buf = string( buffer, length );
-    delete[] buffer;
 }

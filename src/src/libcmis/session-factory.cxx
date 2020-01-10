@@ -27,7 +27,9 @@
  */
 #include "atom-session.hxx"
 #include "gdrive-session.hxx"
+#include "onedrive-session.hxx"
 #include "session-factory.hxx"
+#include "sharepoint-session.hxx"
 #include "ws-session.hxx"
 
 using namespace std;
@@ -58,7 +60,7 @@ namespace libcmis
             libcmis::OAuth2DataPtr oauth2, bool verbose ) throw ( Exception )
     {
         Session* session = NULL;
-        
+
         if ( !bindingUrl.empty( ) )
         {
             // Try the special cases based on the binding URL
@@ -67,32 +69,66 @@ namespace libcmis
                 session = new GDriveSession( bindingUrl, username, password,
                                              oauth2, verbose );
             }
+            else if ( bindingUrl == "https://apis.live.net/v5.0" )
+            {
+                session = new OneDriveSession( bindingUrl, username, password,
+                                               oauth2, verbose);
+            }
             else
             {
-                // Try the CMIS cases: we need to autodetect the binding type
+                libcmis::HttpResponsePtr response;
+                boost::shared_ptr< HttpSession> httpSession(
+                        new HttpSession( username, password,
+                                         noSslCheck, oauth2, verbose ) );
+
                 try
                 {
-                    session = new AtomPubSession( bindingUrl, repository, 
-                                    username, password, noSslCheck, oauth2, verbose );
+                    response = httpSession->httpGetRequest( bindingUrl );
                 }
-                catch ( const Exception& e )
+                catch ( const CurlException& e )
                 {
-                    if ( e.getType( ) == "permissionDenied" )
-                        throw;
+                    // Could be SharePoint - needs NTLM authentication
+                    session = new SharePointSession( bindingUrl, username,
+                                                      password, verbose );
                 }
-                
+
+                // Try the CMIS cases: we need to autodetect the binding type
+                if ( session == NULL )
+                {
+                    try
+                    {
+                        session = new AtomPubSession( bindingUrl, repository,
+                                        *httpSession, response );
+                    }
+                    catch ( const Exception& e )
+                    {
+                    }
+                }
+
                 if ( session == NULL )
                 {
                     // We couldn't get an AtomSession, we may have an URL for the WebService binding
                     try
                     {
                         session = new WSSession( bindingUrl, repository,
-                                      username, password, noSslCheck, oauth2, verbose );
+                                      *httpSession, response );
                     }
                     catch ( const Exception& e )
                     {
-                        if ( e.getType( ) == "permissionDenied" )
-                            throw;
+                    }
+                }
+
+                if ( session == NULL )
+                {
+                    // Maybe the first request didn't throw an exception and the authentication
+                    // succeeded so we need to double check for SharePoint 
+                    try
+                    {
+                        session = new SharePointSession( bindingUrl,
+                                      *httpSession, response );
+                    }
+                    catch ( const Exception& e )
+                    {
                     }
                 }
             }

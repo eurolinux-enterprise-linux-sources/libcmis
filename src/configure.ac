@@ -2,7 +2,7 @@
 # Process this file with autoconf to produce a configure script.
 
 m4_define([libcmis_major_version], [0])
-m4_define([libcmis_minor_version], [4])
+m4_define([libcmis_minor_version], [5])
 m4_define([libcmis_micro_version], [1])
 m4_define([libcmis_api_version], [libcmis_major_version.libcmis_minor_version])
 m4_define([libcmis_version],[libcmis_api_version.libcmis_micro_version])
@@ -10,9 +10,22 @@ m4_define([libcmis_version],[libcmis_api_version.libcmis_micro_version])
 
 AC_PREREQ([2.63])
 AC_INIT([libcmis], [libcmis_version])
-AM_INIT_AUTOMAKE(serial-tests)
+AM_INIT_AUTOMAKE()
 m4_ifdef([AM_SILENT_RULES],[AM_SILENT_RULES([yes])])
 
+# Checks for programs.
+AC_PROG_CC
+AC_PROG_CPP
+AC_PROG_CXX
+AC_PROG_INSTALL
+AC_PROG_LN_S
+AC_PROG_MAKE_SET
+AC_PROG_LIBTOOL
+LT_INIT([win32-dll disable-static pic-only])
+AC_CANONICAL_HOST
+
+
+# Check the options
 AC_ARG_ENABLE(client,
 	AC_HELP_STRING([--disable-client],[Compile only the library, not the client tool]),
 	enable_client=$enableval, enable_client=yes)
@@ -25,14 +38,35 @@ AC_ARG_ENABLE([tests],
 )
 AM_CONDITIONAL(ENABLE_TESTS, test "x$enable_tests" != "xno")
 
-AS_IF([test "x$enable_tests" != "xno"], [
-	AC_ARG_ENABLE([long-tests],
-		[AS_HELP_STRING([--disable-long-tests], [Do not build the unit tests needing to start a server])],
-		[enable_long_tests="$enableval"],
-		[enable_long_tests=yes]
-	)
-], [enable_long_tests=no])
-AM_CONDITIONAL(ENABLE_LONG_TESTS, test "x$enable_long_tests" != "xno")
+AC_ARG_ENABLE([coverage],
+    [AS_HELP_STRING([--enable-coverage], [Extract test coverage data])],
+    [enable_coverage="$enableval"],
+    [enable_coverage=no]
+)
+AM_CONDITIONAL(ENABLE_COVERAGE, test "x$enable_coverage" != "xno")
+
+AS_IF([test "x$enable_coverage" != "xno"], [
+       enable_tests=yes
+
+       # Make sure we have gcc
+       if test "x$GCC" != "xyes"; then
+           AC_MSG_ERROR([GCC is required for --enable-coverage])
+       fi
+
+       AC_CHECK_PROG(LCOV, lcov, lcov)
+       AC_CHECK_PROG(GENHTML, genhtml, genhtml)
+
+       AS_IF([test "x$ac_cv_prog_LCOV" = "x"], [
+           AC_MSG_ERROR([lcov is required for --enable-coverage])
+       ])
+       AS_IF([test "x$ac_cv_prog_GENHTML" = "x"], [
+           AC_MSG_ERROR([genhtml is required for --enable-coverage])
+       ])
+
+       CFLAGS="-g -O0 --coverage"
+       CXXFLAGS="-g -O0 --coverage"
+       LDFLAGS+="--coverage"
+])
 
 
 LIBCMIS_API_VERSION=libcmis_api_version
@@ -49,17 +83,6 @@ AC_SUBST(SRCDIR)
 
 AC_LANG([C++])
 
-# Checks for programs.
-AC_PROG_CC
-AC_PROG_CPP
-AC_PROG_CXX
-AC_PROG_INSTALL
-AC_PROG_LN_S
-AC_PROG_MAKE_SET
-AC_PROG_LIBTOOL
-LT_INIT([win32-dll disable-static pic-only])
-AC_CANONICAL_HOST
-
 # ==========================
 # Platform check for windows
 # ==========================
@@ -68,7 +91,6 @@ AS_CASE([$host], [*-*-mingw*], [native_win32=yes], [native_win32=no])
 AC_MSG_RESULT([$native_win32])
 AM_CONDITIONAL(OS_WIN32, [test "x$native_win32" = "xyes"])
 
-# TODO Check for docbook-to-man
 # =============
 # Documentation
 # =============
@@ -142,6 +164,7 @@ AS_IF([test "x$enable_tests" != "xno"], [
 # Check for boost
 m4_pattern_allow([^BOOST_])
 
+BOOST_REQUIRE([1.36])
 BOOST_DATE_TIME
 BOOST_SMART_PTR
 BOOST_UUID
@@ -166,7 +189,6 @@ AC_CONFIG_FILES([
 	Makefile
 	libcmis.pc
 	libcmis-c.pc
-    run-test.sh
     cppcheck-test.sh
 	src/Makefile
 	src/libcmis/Makefile
@@ -186,7 +208,7 @@ libcmis $VERSION:
               client: ${enable_client}
               werror: ${enable_werror}
                tests: ${enable_tests}
-          long tests: ${enable_long_tests}
       cppcheck tests: ${enable_cppcheck}
+       test coverage: ${enable_coverage}
                 mans: ${build_man}
 ])

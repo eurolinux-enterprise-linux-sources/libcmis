@@ -37,10 +37,19 @@ class AtomPubSession : public BaseSession
         AtomRepositoryPtr m_repository;
 
     public:
+        enum ResultObjectType { RESULT_DYNAMIC, RESULT_FOLDER, RESULT_DOCUMENT };
         AtomPubSession( std::string sAtomPubUrl, std::string repositoryId,
                         std::string username, std::string password, bool noSslCheck = false,
                         libcmis::OAuth2DataPtr oauth2 = libcmis::OAuth2DataPtr(),
                         bool verbose =false ) throw ( libcmis::Exception );
+
+        /** This constructor uses the response of an HTTP request made
+            before to spare some HTTP request. This constructor has mostly
+            been designed for the SessionFactory use.
+          */
+        AtomPubSession( std::string sAtomPubUrl, std::string repositoryId,
+                        const HttpSession& httpSession,
+                        libcmis::HttpResponsePtr response ) throw ( libcmis::Exception );
         AtomPubSession( const AtomPubSession& copy );
         ~AtomPubSession( );
 
@@ -50,7 +59,10 @@ class AtomPubSession : public BaseSession
 
         // Utility methods
 
-        libcmis::ObjectPtr createObjectFromEntryDoc( xmlDocPtr doc );
+        libcmis::ObjectPtr createObjectFromEntryDoc( xmlDocPtr doc, ResultObjectType res=RESULT_DYNAMIC );
+
+        std::vector< libcmis::ObjectTypePtr > getChildrenTypes( std::string url )
+            throw ( libcmis::Exception );
 
         // Override session methods
 
@@ -59,19 +71,23 @@ class AtomPubSession : public BaseSession
         virtual bool setRepository( std::string repositoryId );
 
         virtual libcmis::ObjectPtr getObject( std::string id ) throw ( libcmis::Exception );
-        
+
         virtual libcmis::ObjectPtr getObjectByPath( std::string path ) throw ( libcmis::Exception );
 
         virtual libcmis::ObjectTypePtr getType( std::string id ) throw ( libcmis::Exception );
+
+        virtual std::vector< libcmis::ObjectTypePtr > getBaseTypes( ) throw ( libcmis::Exception );
 
     protected:
 
         /** Defaults constructor shouldn't be used
           */
-        AtomPubSession( ); 
-        void parseServiceDocument( const std::string& buf ) throw ( libcmis::Exception );
+        AtomPubSession( );
+        void parseServiceDocument( const std::string& buf )
+            throw ( libcmis::Exception );
 
-        void initialize( ) throw ( libcmis::Exception );
+        void initialize( libcmis::HttpResponsePtr response )
+            throw ( libcmis::Exception );
 };
 
 #endif

@@ -35,16 +35,15 @@
 #include "gdrive-object-type.hxx"
 #include "gdrive-utils.hxx"
 
-using std::string;
-using std::istringstream;
+using namespace std;
 
-GDriveSession::GDriveSession ( string baseUrl, 
-                               string username, 
-                               string password, 
-                               libcmis::OAuth2DataPtr oauth2, 
+GDriveSession::GDriveSession ( string baseUrl,
+                               string username,
+                               string password,
+                               libcmis::OAuth2DataPtr oauth2,
                                bool verbose )
                                     throw ( libcmis::Exception ) :
-    BaseSession( baseUrl, string(), username, password, false, 
+    BaseSession( baseUrl, string(), username, password, false,
                  libcmis::OAuth2DataPtr(), verbose )
 
 {
@@ -70,12 +69,17 @@ GDriveSession::~GDriveSession()
 {
 }
 
-libcmis::RepositoryPtr GDriveSession::getRepository( ) 
+libcmis::RepositoryPtr GDriveSession::getRepository( )
     throw ( libcmis::Exception )
 {
     // Return a dummy repository since GDrive doesn't have that notion
     libcmis::RepositoryPtr repo( new GdriveRepository( ) );
     return repo;
+}
+
+bool GDriveSession::setRepository( std::string )
+{
+    return true;
 }
 
 libcmis::ObjectPtr GDriveSession::getObject( string objectId )
@@ -102,11 +106,11 @@ libcmis::ObjectPtr GDriveSession::getObject( string objectId )
     if ( kind == "drive#file" )
     {
         string mimeType = jsonRes["mimeType"].toString( );
-        
+
         // Folder is a file with a special mimeType
         if ( mimeType == GDRIVE_FOLDER_MIME_TYPE )
             object.reset( new GDriveFolder( this, jsonRes ) );
-        else 
+        else
             object.reset( new GDriveDocument( this, jsonRes ) );
     } else if ( kind == "drive#revision" ) // A revision is a document too
     {
@@ -118,19 +122,76 @@ libcmis::ObjectPtr GDriveSession::getObject( string objectId )
     return object;
 }
 
-libcmis::ObjectPtr GDriveSession::getObjectByPath( string path ) 
+libcmis::ObjectPtr GDriveSession::getObjectByPath( string path )
     throw ( libcmis::Exception )
 {
-    // Google Drive doesn't support get Object by path.
-    // The path here serve as an object ID.
-    if ( path == "/" )
-        path = "root";
-    return getObject( path );
+    size_t pos = 0;
+    size_t endpos = 0;
+    string objectId;
+    libcmis::ObjectPtr object;
+
+    do
+    {
+        endpos = path.find( "/", pos );
+        size_t len = path.length( ) - pos;
+        if ( endpos != string::npos )
+            len = endpos - pos;
+
+        string segment = path.substr( pos, len );
+        if ( segment.empty( ) )
+        {
+            // Root case or ignore double slashes
+            if ( pos == 0 )
+                objectId = "root";
+            else
+                continue;
+        }
+        else
+        {
+            // Normal child case
+            // Ask for the ID of the child if there is any
+            string childIdUrl = m_bindingUrl + "/files/" + objectId +
+                                "/children/?q=title+=+'" + segment +
+                                "'&fields=items:id";
+
+            string res;
+            try
+            {
+                res = httpGetRequest( childIdUrl )->getStream()->str();
+            }
+            catch ( const CurlException& e )
+            {
+                throw e.getCmisException( );
+            }
+            Json jsonRes = Json::parse( res );
+
+            // Did we get an id?
+            Json::JsonVector items = jsonRes["items"].getList();
+            if ( items.empty( ) )
+                throw libcmis::Exception( "Object not found: " + path, "objectNotFound" );
+
+            objectId = items[0]["id"].toString( );
+            if ( objectId.empty( ) )
+                throw libcmis::Exception( "Object not found: " + path, "objectNotFound" );
+        }
+
+        pos = endpos + 1;
+    } while ( endpos != string::npos );
+
+    return getObject( objectId );
 }
 
-libcmis::ObjectTypePtr GDriveSession::getType( string id ) 
+libcmis::ObjectTypePtr GDriveSession::getType( string id )
     throw ( libcmis::Exception )
 {
     libcmis::ObjectTypePtr type( new GdriveObjectType( id ) );
     return type;
+}
+
+vector< libcmis::ObjectTypePtr > GDriveSession::getBaseTypes( )
+    throw ( libcmis::Exception )
+{
+    vector< libcmis::ObjectTypePtr > types;
+    // TODO Implement me
+    return types;
 }

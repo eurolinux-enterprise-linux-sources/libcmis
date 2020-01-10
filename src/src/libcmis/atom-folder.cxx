@@ -27,6 +27,8 @@
  */
 #include <sstream>
 
+#include <boost/shared_ptr.hpp>
+
 #include "atom-document.hxx"
 #include "atom-folder.hxx"
 #include "atom-session.hxx"
@@ -162,6 +164,10 @@ libcmis::FolderPtr AtomFolder::createFolder( const PropertyPtrMap& properties )
     }
     catch ( const CurlException& e )
     {
+        /* 409 here is more likely to be a constraint error */
+        if ( e.getHttpStatus() == 409 ) {
+            throw libcmis::Exception( e.what(), "constraint" );
+        }
         throw e.getCmisException( );
     }
 
@@ -170,7 +176,7 @@ libcmis::FolderPtr AtomFolder::createFolder( const PropertyPtrMap& properties )
     if ( NULL == doc )
         throw libcmis::Exception( "Failed to parse object infos" );
 
-    libcmis::ObjectPtr created = getSession( )->createObjectFromEntryDoc( doc );
+    libcmis::ObjectPtr created = getSession( )->createObjectFromEntryDoc( doc, AtomPubSession::RESULT_FOLDER );
     xmlFreeDoc( doc );
 
     libcmis::FolderPtr newFolder = boost::dynamic_pointer_cast< libcmis::Folder >( created );
@@ -212,8 +218,8 @@ libcmis::DocumentPtr AtomFolder::createDocument( const PropertyPtrMap& propertie
     }
 
     string respBuf = response->getStream( )->str( );
-    xmlDocPtr doc = xmlReadMemory( respBuf.c_str(), respBuf.size(), getInfosUrl().c_str(), NULL, XML_PARSE_NOERROR );
-    if ( NULL == doc )
+    boost::shared_ptr< xmlDoc > doc( xmlReadMemory( respBuf.c_str(), respBuf.size(), getInfosUrl().c_str(), NULL, XML_PARSE_NOERROR ), xmlFreeDoc );
+    if ( !doc )
     {
         // We may not have the created document entry in the response body: this is
         // the behaviour of some servers, but the standard says we need to look for
@@ -231,7 +237,7 @@ libcmis::DocumentPtr AtomFolder::createDocument( const PropertyPtrMap& propertie
             {
                 response = getSession( )->httpGetRequest( it->second );
                 respBuf = response->getStream( )->str( );
-                doc = xmlReadMemory( respBuf.c_str(), respBuf.size(), getInfosUrl().c_str(), NULL, XML_PARSE_NOERROR );
+                doc.reset( xmlReadMemory( respBuf.c_str(), respBuf.size(), getInfosUrl().c_str(), NULL, XML_PARSE_NOERROR ), xmlFreeDoc );
             }
             catch ( const CurlException& e )
             {
@@ -240,12 +246,11 @@ libcmis::DocumentPtr AtomFolder::createDocument( const PropertyPtrMap& propertie
         }
 
         // if doc is still NULL after that, then throw an exception
-        if ( NULL == doc )
+        if ( !doc )
             throw libcmis::Exception( "Missing expected response from server" );
     }
 
-    libcmis::ObjectPtr created = getSession( )->createObjectFromEntryDoc( doc );
-    xmlFreeDoc( doc );
+    libcmis::ObjectPtr created = getSession( )->createObjectFromEntryDoc( doc.get(), AtomPubSession::RESULT_DOCUMENT );
 
     libcmis::DocumentPtr newDocument = boost::dynamic_pointer_cast< libcmis::Document >( created );
     if ( !newDocument.get( ) )

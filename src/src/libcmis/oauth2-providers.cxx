@@ -30,11 +30,11 @@
 #include <libxml/xmlreader.h>
 
 #include "oauth2-providers.hxx"
-#include "base-session.hxx"
+#include "http-session.hxx"
 
 using namespace std;
 
-string OAuth2Providers::OAuth2Gdrive( BaseSession* session, const string& authUrl,
+string OAuth2Providers::OAuth2Gdrive( HttpSession* session, const string& authUrl,
                                       const string& username, const string& password )
 {
     static const string CONTENT_TYPE( "application/x-www-form-urlencoded" );
@@ -94,7 +94,13 @@ string OAuth2Providers::OAuth2Gdrive( BaseSession* session, const string& authUr
     return code;
 }
 
-string OAuth2Providers::OAuth2Alfresco( BaseSession* session, const string& authUrl,
+string OAuth2Providers::OAuth2Onedrive( HttpSession* /*session*/, const string& /*authUrl*/,
+                                      const string& /*username*/, const string& /*password*/ )
+{
+    return string( );
+}
+
+string OAuth2Providers::OAuth2Alfresco( HttpSession* session, const string& authUrl,
                                         const string& username, const string& password )
 {
     static const string CONTENT_TYPE( "application/x-www-form-urlencoded" );
@@ -152,14 +158,16 @@ string OAuth2Providers::OAuth2Alfresco( BaseSession* session, const string& auth
     return code;
 }
 
-OAuth2Parser OAuth2Providers::getOAuth2Parser( const std::string& bindingUrl )
+OAuth2Parser OAuth2Providers::getOAuth2Parser( const std::string& url )
 {
-    if ( bindingUrl.find( "https://api.alfresco.com/" ) == 0 )
+    if ( url.find( "https://api.alfresco.com/" ) == 0 )
         // For Alfresco in the cloud, only match the hostname as there can be several
         // binding URLs created with it.
         return OAuth2Alfresco;
-    else if ( bindingUrl == "https://www.googleapis.com/drive/v2" )
+    else if ( url.find( "https://www.googleapis.com/drive/v2" ) == 0 )
         return OAuth2Gdrive;
+    else if ( url.find( "https://apis.live.net/v5.0" ) == 0 )
+        return OAuth2Onedrive;
 
     return OAuth2Gdrive;
 }

@@ -1,0 +1,70 @@
+From 0490c023cd14cbb3d1ba2bc1b648b216f848a648 Mon Sep 17 00:00:00 2001
+From: Giuseppe Castagno <giuseppe.castagno@acca-esse.eu>
+Date: Tue, 3 May 2016 08:35:57 +0200
+Subject: [PATCH 2/5] Add new mokup login pages
+
+---
+ qa/libcmis/data/gdrive/login.html  | 12 ------------
+ qa/libcmis/data/gdrive/login1.html | 12 ++++++++++++
+ qa/libcmis/data/gdrive/login2.html | 11 +++++++++++
+ 3 files changed, 23 insertions(+), 12 deletions(-)
+ delete mode 100644 qa/libcmis/data/gdrive/login.html
+ create mode 100644 qa/libcmis/data/gdrive/login1.html
+ create mode 100644 qa/libcmis/data/gdrive/login2.html
+
+diff --git a/qa/libcmis/data/gdrive/login.html b/qa/libcmis/data/gdrive/login.html
+deleted file mode 100644
+index eae53bf..0000000
+--- a/qa/libcmis/data/gdrive/login.html
++++ /dev/null
+@@ -1,12 +0,0 @@
+-<!DOCTYPE html>
+-<html lang="en">
+-<body>
+-<form novalidate="" id="gaia_loginform" action="https://login/url" method="post">
+-  <input name="continue" id="continue" value="redirectLink&amp;scope=Scope" type="hidden">
+-  <input name="service" id="service" value="lso" type="hidden">
+-  <input name="GALX" value="cookie" type="hidden">
+-  <input spellcheck="false" name="Email" id="Email" value="" type="email">
+-  <input name="Passwd" id="Passwd" type="password">
+-</form>
+-</body>
+-</html>
+diff --git a/qa/libcmis/data/gdrive/login1.html b/qa/libcmis/data/gdrive/login1.html
+new file mode 100644
+index 0000000..eae53bf
+--- /dev/null
++++ b/qa/libcmis/data/gdrive/login1.html
+@@ -0,0 +1,12 @@
++<!DOCTYPE html>
++<html lang="en">
++<body>
++<form novalidate="" id="gaia_loginform" action="https://login/url" method="post">
++  <input name="continue" id="continue" value="redirectLink&amp;scope=Scope" type="hidden">
++  <input name="service" id="service" value="lso" type="hidden">
++  <input name="GALX" value="cookie" type="hidden">
++  <input spellcheck="false" name="Email" id="Email" value="" type="email">
++  <input name="Passwd" id="Passwd" type="password">
++</form>
++</body>
++</html>
+diff --git a/qa/libcmis/data/gdrive/login2.html b/qa/libcmis/data/gdrive/login2.html
+new file mode 100644
+index 0000000..198f816
+--- /dev/null
++++ b/qa/libcmis/data/gdrive/login2.html
+@@ -0,0 +1,11 @@
++<!DOCTYPE html>
++<html lang="en">
++<body>
++<form novalidate="" id="gaia_loginform" action="https://auth/url" method="post">
++  <input name="continue" id="continue" value="redirectLink&amp;scope=Scope" type="hidden">
++  <input name="service" id="service" value="lso" type="hidden">
++  <input name="GALX" value="cookie" type="hidden">
++  <input name="Passwd" id="Passwd" type="password">
++</form>
++</body>
++</html>
+-- 
+2.7.4
+

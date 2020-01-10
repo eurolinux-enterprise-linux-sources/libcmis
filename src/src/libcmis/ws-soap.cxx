@@ -57,6 +57,7 @@ SoapFault::SoapFault( xmlNodePtr node, SoapResponseFactory* factory ) :
                 localName = xmlStrdup( content );
             m_faultcode = string( ( char* )localName );
             xmlFree( content );
+            xmlFree( prefix );
             xmlFree( localName );
         }
         else if ( xmlStrEqual( child->name, BAD_CAST( "faultstring" ) ) )
@@ -79,10 +80,12 @@ SoapFault::SoapFault( xmlNodePtr node, SoapResponseFactory* factory ) :
 
 }
 
+// LCOV_EXCL_START
 const char* SoapFault::what( ) const throw ( )
 {
     return m_message.c_str( );
 }
+// LCOV_EXCL_STOP
 
 
 SoapResponseFactory::SoapResponseFactory( ) :
@@ -138,25 +141,25 @@ vector< SoapResponsePtr > SoapResponseFactory::parseResponse( RelatedMultipart& 
 
     vector< SoapResponsePtr > responses;
 
-    xmlDocPtr doc = xmlReadMemory( xml.c_str(), xml.size(), "", NULL, 0 );
+    const boost::shared_ptr< xmlDoc > doc( xmlReadMemory( xml.c_str(), xml.size(), "", NULL, 0 ), xmlFreeDoc );
 
-    if ( NULL != doc )
+    if ( bool( doc ) )
     {
-        xmlXPathContextPtr xpathCtx = xmlXPathNewContext( doc );
-        libcmis::registerSoapNamespaces( xpathCtx );
+        const boost::shared_ptr< xmlXPathContext > xpathCtx( xmlXPathNewContext( doc.get() ), xmlXPathFreeContext );
+        libcmis::registerSoapNamespaces( xpathCtx.get() );
 
         for ( map< string, string >::iterator it = m_namespaces.begin( );
               it != m_namespaces.end( ); ++it )
         {
-            xmlXPathRegisterNs( xpathCtx, BAD_CAST( it->first.c_str() ),  BAD_CAST( it->second.c_str( ) ) );
+            xmlXPathRegisterNs( xpathCtx.get(), BAD_CAST( it->first.c_str() ),  BAD_CAST( it->second.c_str( ) ) );
         }
 
-        if ( NULL != xpathCtx )
+        if ( bool( xpathCtx ) )
         {
             string bodyXPath( "//soap-env:Body/*" );
-            xmlXPathObjectPtr xpathObj = xmlXPathEvalExpression( BAD_CAST( bodyXPath.c_str() ), xpathCtx );
+            const boost::shared_ptr< xmlXPathObject > xpathObj( xmlXPathEvalExpression( BAD_CAST( bodyXPath.c_str() ), xpathCtx.get() ), xmlXPathFreeObject );
 
-            if ( xpathObj != NULL )
+            if ( bool( xpathObj ) )
             {
                 int nbChildren = 0;
                 if ( xpathObj->nodesetval )
@@ -178,10 +181,7 @@ vector< SoapResponsePtr > SoapResponseFactory::parseResponse( RelatedMultipart& 
                 }
             }
         }
-        xmlXPathFreeContext( xpathCtx );
     }
-
-    xmlFreeDoc( doc );
 
     return responses;
 }

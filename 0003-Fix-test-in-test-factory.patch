@@ -1,0 +1,113 @@
+From 04297298ad9659c949beb7ccd0f75cfd440a4fb8 Mon Sep 17 00:00:00 2001
+From: Giuseppe Castagno <giuseppe.castagno@acca-esse.eu>
+Date: Tue, 3 May 2016 11:47:43 +0200
+Subject: [PATCH 3/5] Fix test in test-factory
+
+---
+ qa/libcmis/data/gdrive/login1.html |  4 ++--
+ qa/libcmis/data/gdrive/login2.html |  2 +-
+ qa/libcmis/test-factory.cxx        | 10 ++++++++--
+ qa/mockup/mockup-config.cxx        |  3 +++
+ qa/mockup/mockup-config.h          |  6 +++---
+ 5 files changed, 17 insertions(+), 8 deletions(-)
+
+diff --git a/qa/libcmis/data/gdrive/login1.html b/qa/libcmis/data/gdrive/login1.html
+index eae53bf..b6da338 100644
+--- a/qa/libcmis/data/gdrive/login1.html
++++ b/qa/libcmis/data/gdrive/login1.html
+@@ -1,12 +1,12 @@
+ <!DOCTYPE html>
+ <html lang="en">
+ <body>
+-<form novalidate="" id="gaia_loginform" action="https://login/url" method="post">
++<form novalidate="" id="gaia_loginform" action="https://login2/url" method="post">
++  <input name="Page" type="hidden" value="PasswordSeparationSignIn">
+   <input name="continue" id="continue" value="redirectLink&amp;scope=Scope" type="hidden">
+   <input name="service" id="service" value="lso" type="hidden">
+   <input name="GALX" value="cookie" type="hidden">
+   <input spellcheck="false" name="Email" id="Email" value="" type="email">
+-  <input name="Passwd" id="Passwd" type="password">
+ </form>
+ </body>
+ </html>
+diff --git a/qa/libcmis/data/gdrive/login2.html b/qa/libcmis/data/gdrive/login2.html
+index 198f816..6425091 100644
+--- a/qa/libcmis/data/gdrive/login2.html
++++ b/qa/libcmis/data/gdrive/login2.html
+@@ -1,7 +1,7 @@
+ <!DOCTYPE html>
+ <html lang="en">
+ <body>
+-<form novalidate="" id="gaia_loginform" action="https://auth/url" method="post">
++<form novalidate="" id="gaia_loginform" action="https://login/url" method="post">
+   <input name="continue" id="continue" value="redirectLink&amp;scope=Scope" type="hidden">
+   <input name="service" id="service" value="lso" type="hidden">
+   <input name="GALX" value="cookie" type="hidden">
+diff --git a/qa/libcmis/test-factory.cxx b/qa/libcmis/test-factory.cxx
+index c0bcb4c..3779e5a 100644
+--- a/qa/libcmis/test-factory.cxx
++++ b/qa/libcmis/test-factory.cxx
+@@ -64,6 +64,7 @@
+ 
+ #define GDRIVE_AUTH_URL string ( "https://auth/url" )
+ #define GDRIVE_LOGIN_URL  string ("https://login/url" )
++#define GDRIVE_LOGIN_URL2  string ("https://login2/url" )
+ #define GDRIVE_APPROVAL_URL  string ("https://approval/url" )
+ #define GDRIVE_TOKEN_URL  string ( "https://token/url" )
+ 
+@@ -101,10 +102,15 @@ namespace
+                                  string("&redirect_uri=") + OAUTH_REDIRECT_URI +
+                                  string("&response_type=code") +
+                                  string("&client_id=") + OAUTH_CLIENT_ID;
++
+         curl_mockup_addResponse ( GDRIVE_AUTH_URL.c_str(), loginIdentifier.c_str( ),
+-                                "GET", DATA_DIR "/gdrive/login.html", 200, true);
++                                "GET", DATA_DIR "/gdrive/login1.html", 200, true);
++
++        //authentication email
++        curl_mockup_addResponse( GDRIVE_LOGIN_URL2.c_str( ), "", "POST",
++                                 DATA_DIR "/gdrive/login2.html", 200, true);
+ 
+-        //authentication response
++        //authentication password,
+         curl_mockup_addResponse( GDRIVE_LOGIN_URL.c_str( ), "", "POST",
+                                  DATA_DIR "/gdrive/approve.html", 200, true);
+ 
+diff --git a/qa/mockup/mockup-config.cxx b/qa/mockup/mockup-config.cxx
+index f6b84ad..fb19927 100644
+--- a/qa/mockup/mockup-config.cxx
++++ b/qa/mockup/mockup-config.cxx
+@@ -117,6 +117,9 @@ namespace mockup
+         return !m_username.empty( ) && !m_password.empty( );
+     }
+ 
++    /** Find a suitable response
++     * using the request as a search key
++     */
+     CURLcode Configuration::writeResponse( CurlHandle* handle )
+     {
+         CURLcode code = CURLE_OK;
+diff --git a/qa/mockup/mockup-config.h b/qa/mockup/mockup-config.h
+index 6b94706..d0fc3bb 100644
+--- a/qa/mockup/mockup-config.h
++++ b/qa/mockup/mockup-config.h
+@@ -41,13 +41,13 @@ void curl_mockup_reset( );
+         the base URL of the request without parameters
+     \param matchParam
+         a string to find in the parameters part of the URL to match
++    \param method
++        HTTP method to match like PUT, GET, POST or DELETE. An empty
++        string matches any method.
+     \param response
+         a string corresponding either to the file path of the request
+         body to send or directly the content to send. This value has
+         a different meaning depending on isFilePath parameter.
+-    \param method
+-        HTTP method to match like PUT, GET, POST or DELETE. An empty
+-        string matches any method.
+     \param status
+         the HTTP status to return. 0 means HTTP OK (200).
+     \param isFilePath
+-- 
+2.7.4
+

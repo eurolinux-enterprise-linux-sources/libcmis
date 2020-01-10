@@ -26,6 +26,8 @@
  * instead of those above.
  */
 
+#include <algorithm>
+
 #include "object.hxx"
 #include "session.hxx"
 #include "xml-utils.hxx"
@@ -104,11 +106,15 @@ namespace libcmis
             }
             xmlXPathFreeObject( xpathObj );
 
+            // TODO Get rid of this request:
+            //   * Too time consuming
+            //   * Makes secondary aspect properties annoying to create
+            //   * Prevents from getting Alfresco additional properties
             // First get the type id as it will give us the property definitions
-            string typeIdReq( "//cmis:propertyId[@propertyDefinitionId='cmis:objectTypeId']/cmis:value/text()" );
+            string typeIdReq( "/*/cmis:properties/cmis:propertyId[@propertyDefinitionId='cmis:objectTypeId']/cmis:value/text()" );
             m_typeId = libcmis::getXPathValue( xpathCtx, typeIdReq );
 
-            string propertiesReq( "//cmis:properties/*" );
+            string propertiesReq( "/*/cmis:properties/*" );
             xpathObj = xmlXPathEvalExpression( BAD_CAST( propertiesReq.c_str() ), xpathCtx );
             if ( NULL != xpathObj && NULL != xpathObj->nodesetval )
             {
@@ -122,23 +128,13 @@ namespace libcmis
                 }
             }
             xmlXPathFreeObject( xpathObj );
-
-            // Get the renditions 
-            xpathObj = xmlXPathEvalExpression( BAD_CAST( "//cmis:rendition" ), xpathCtx );
-            if ( xpathObj && xpathObj->nodesetval && xpathObj->nodesetval->nodeNr > 0 )
-            {
-                xmlNodePtr renditionNode = xpathObj->nodesetval->nodeTab[0];
-                libcmis::RenditionPtr rendition( new libcmis::Rendition( renditionNode ) );
-                m_renditions.push_back( rendition );
-            }
-            xmlXPathFreeObject( xpathObj );
         }
 
         xmlXPathFreeContext( xpathCtx );
         xmlFreeDoc( doc );
 
         m_refreshTimestamp = time( NULL );
-    } 
+    }
 
     string Object::getStringProperty( const string& propertyName )
     {
@@ -175,7 +171,7 @@ namespace libcmis
     string Object::getCreatedBy( )
     {
         return getStringProperty( "cmis:createdBy" );
-    }    
+    }
 
     string Object::getLastModifiedBy( )
     {
@@ -199,7 +195,7 @@ namespace libcmis
         if ( it != getProperties( ).end( ) && it->second != NULL && !it->second->getDateTimes( ).empty( ) )
             value = it->second->getDateTimes( ).front( );
         return value;
-    } 
+    }
 
     boost::posix_time::ptime Object::getLastModificationDate( )
     {
@@ -217,6 +213,75 @@ namespace libcmis
         if ( it != getProperties( ).end( ) && it->second != NULL && !it->second->getBools( ).empty( ) )
             value = it->second->getBools( ).front( );
         return value;
+    }
+
+    vector< string > Object::getSecondaryTypes( )
+    {
+        vector< string > types;
+        PropertyPtrMap::const_iterator it = getProperties( ).find( string( "cmis:secondaryObjectTypeIds" ) );
+        if ( it != getProperties( ).end( ) && it->second != NULL )
+            types = it->second->getStrings( );
+
+        return types;
+    }
+
+    ObjectPtr Object::addSecondaryType( string id, PropertyPtrMap properties )
+        throw ( Exception )
+    {
+        // First make sure the cmis:secondaryObjectTypeIds property can be defined
+        map< string, PropertyTypePtr >& propertyTypes = getTypeDescription( )->
+            getPropertiesTypes();
+
+        map< string, PropertyTypePtr >::iterator it = propertyTypes.find( "cmis:secondaryObjectTypeIds" );
+        if ( it == propertyTypes.end() )
+            throw ( Exception( "Secondary Types not supported", "constraint" ) );
+
+        // Copy all the new properties without checking they are
+        // defined in the secondary type definition: that would
+        // require one more HTTP request and the server will complain
+        // anyway if it's not good.
+        PropertyPtrMap newProperties( properties );
+
+        // Prepare the new cmis:secondaryObjectTypeIds property
+        vector< string > secTypes = getSecondaryTypes( );
+        if ( find( secTypes.begin(), secTypes.end(), id ) == secTypes.end( ) )
+        {
+            secTypes.push_back( id );
+            PropertyPtr newSecTypes( new Property( it->second, secTypes ) );
+            newProperties["cmis:secondaryObjectTypeIds"] = newSecTypes;
+        }
+        return updateProperties( newProperties );
+    }
+
+    ObjectPtr Object::removeSecondaryType( string id ) throw ( Exception )
+    {
+        // First make sure the cmis:secondaryObjectTypeIds property can be defined
+        map< string, PropertyTypePtr >& propertyTypes = getTypeDescription( )->
+            getPropertiesTypes();
+
+        map< string, PropertyTypePtr >::iterator it = propertyTypes.find( "cmis:secondaryObjectTypeIds" );
+        if ( it == propertyTypes.end() )
+            throw ( Exception( "Secondary Types not supported", "constraint" ) );
+
+        // Prepare the new cmis:secondaryObjectTypeIds property
+        PropertyPtrMap newProperties;
+        vector< string > secTypes = getSecondaryTypes( );
+        vector< string > newSecTypes;
+        for ( vector< string >::iterator idIt = secTypes.begin( );
+                idIt != secTypes.end( ); ++idIt )
+        {
+            if ( *idIt != id )
+                newSecTypes.push_back( *idIt );
+        }
+
+        // No need to update the property if it didn't change
+        if ( newSecTypes.size( ) != secTypes.size( ) )
+        {
+            PropertyPtr property ( new Property( it->second, newSecTypes ) );
+            newProperties["cmis:secondaryObjectTypeIds"] = property;
+        }
+
+        return updateProperties( newProperties );
     }
 
     PropertyPtrMap& Object::getProperties( )
@@ -241,16 +306,17 @@ namespace libcmis
     {
         string url;
         vector< RenditionPtr > renditions = getRenditions( );
-        for ( vector< RenditionPtr >::iterator it = renditions.begin( ); 
+        for ( vector< RenditionPtr >::iterator it = renditions.begin( );
             it != renditions.end( ); ++it)
-                
+
         {
-            if ( (*it)->getKind( ) == "cmis:thumbnail" ) return (*it)->getUrl( );    
+            if ( (*it)->getKind( ) == "cmis:thumbnail" ) return (*it)->getUrl( );
         }
-        
+
         return url;
     }
 
+    // LCOV_EXCL_START
     string Object::toString( )
     {
         stringstream buf;
@@ -297,17 +363,17 @@ namespace libcmis
                     for ( vector< string >::iterator valueIt = strValues.begin( );
                           valueIt != strValues.end( ); ++valueIt )
                     {
-                        buf << "\t" << *valueIt << endl; 
+                        buf << "\t" << *valueIt << endl;
                     }
                 }
             }
         }
-        
+
         vector< libcmis::RenditionPtr > renditions = getRenditions( );
         if ( !renditions.empty() )
         {
             buf << "Renditions: " << endl;
-            for ( vector< libcmis::RenditionPtr >::iterator it = renditions.begin(); 
+            for ( vector< libcmis::RenditionPtr >::iterator it = renditions.begin();
                    it != renditions.end(); ++it )
             {
                 buf << ( *it )->toString( ) << endl;
@@ -316,6 +382,7 @@ namespace libcmis
 
         return buf.str();
     }
+    // LCOV_EXCL_STOP
 
     void Object::toXml( xmlTextWriterPtr writer )
     {

@@ -32,6 +32,33 @@
 
 using namespace std;
 using libcmis::PropertyPtrMap;
+using boost::dynamic_pointer_cast;
+
+namespace
+{
+    string lcl_stdString( const char* str )
+    {
+        string result;
+        if ( str )
+            result = string( str );
+        return result;
+    }
+
+    PropertyPtrMap lcl_createPropertiesMap( libcmis_vector_property_Ptr properties )
+    {
+        PropertyPtrMap propertiesMap;
+        if ( properties )
+        {
+            for ( vector< libcmis::PropertyPtr >::iterator it = properties->handle.begin( );
+                    it != properties->handle.end( ); ++it )
+            {
+                libcmis::PropertyPtr propHandle = *it;
+                propertiesMap[ propHandle->getPropertyType()->getId( ) ] = propHandle;
+            }
+        }
+        return propertiesMap;
+    }
+}
 
 void libcmis_vector_object_free( libcmis_vector_object_Ptr vector )
 {
@@ -174,7 +201,7 @@ char* libcmis_object_getThumbnailUrl( libcmis_ObjectPtr object )
         return NULL;
 }
 
-libcmis_vector_rendition_Ptr libcmis_object_getRenditions( libcmis_ObjectPtr object, 
+libcmis_vector_rendition_Ptr libcmis_object_getRenditions( libcmis_ObjectPtr object,
                                                            libcmis_ErrorPtr error )
 {
     libcmis_vector_rendition_Ptr result = NULL;
@@ -186,7 +213,7 @@ libcmis_vector_rendition_Ptr libcmis_object_getRenditions( libcmis_ObjectPtr obj
             result = new libcmis_vector_rendition( );
             result->handle = handles;
         }
-       
+
         catch ( const bad_alloc& e )
         {
             if ( error != NULL )
@@ -207,6 +234,91 @@ bool libcmis_object_isImmutable( libcmis_ObjectPtr object )
         return true;
 }
 
+libcmis_vector_string_Ptr libcmis_object_getSecondaryTypes( libcmis_ObjectPtr object )
+{
+    libcmis_vector_string_Ptr c_types = NULL;
+    if ( object != NULL && object->handle != NULL )
+    {
+        vector< string > types = object->handle->getSecondaryTypes( );
+        c_types = new ( nothrow ) libcmis_vector_string( );
+        if ( c_types )
+            c_types->handle = types;
+    }
+    return c_types;
+}
+
+libcmis_ObjectPtr
+libcmis_object_addSecondaryType( libcmis_ObjectPtr object,
+                                 const char* id,
+                                 libcmis_vector_property_Ptr properties,
+                                 libcmis_ErrorPtr error )
+{
+    libcmis_ObjectPtr updated = NULL;
+    if ( object != NULL && object->handle != NULL && properties != NULL )
+    {
+        try
+        {
+            PropertyPtrMap propertiesMap = lcl_createPropertiesMap( properties );
+            libcmis::ObjectPtr result = object->handle->addSecondaryType(
+                                                    lcl_stdString( id ),
+                                                    propertiesMap );
+            updated = new libcmis_object( );
+            updated->handle = result;
+        }
+        catch ( const libcmis::Exception& e )
+        {
+            if ( error != NULL )
+            {
+                error->message = strdup( e.what() );
+                error->type = strdup( e.getType().c_str() );
+            }
+        }
+        catch ( const bad_alloc& e )
+        {
+            if ( error != NULL )
+            {
+                error->message = strdup( e.what() );
+                error->badAlloc = true;
+            }
+        }
+    }
+    return updated;
+}
+
+libcmis_ObjectPtr
+libcmis_object_removeSecondaryType( libcmis_ObjectPtr object,
+                                    const char* id,
+                                    libcmis_ErrorPtr error )
+{
+    libcmis_ObjectPtr updated = NULL;
+    if ( object != NULL && object->handle != NULL )
+    {
+        try
+        {
+            libcmis::ObjectPtr result = object->handle->removeSecondaryType(
+                                                lcl_stdString( id ) );
+            updated = new libcmis_object( );
+            updated->handle = result;
+        }
+        catch ( const libcmis::Exception& e )
+        {
+            if ( error != NULL )
+            {
+                error->message = strdup( e.what() );
+                error->type = strdup( e.getType().c_str() );
+            }
+        }
+        catch ( const bad_alloc& e )
+        {
+            if ( error != NULL )
+            {
+                error->message = strdup( e.what() );
+                error->badAlloc = true;
+            }
+        }
+    }
+    return updated;
+}
 
 libcmis_vector_property_Ptr libcmis_object_getProperties( libcmis_ObjectPtr object )
 {
@@ -235,7 +347,7 @@ libcmis_PropertyPtr libcmis_object_getProperty( libcmis_ObjectPtr object, const 
     if ( object != NULL && object->handle.get( ) != NULL )
     {
         PropertyPtrMap& handles = object->handle->getProperties( );
-        PropertyPtrMap::iterator it = handles.find( string( name ) );
+        PropertyPtrMap::iterator it = handles.find( lcl_stdString( name ) );
         if ( it != handles.end( ) )
         {
             property = new ( nothrow ) libcmis_property( );
@@ -258,14 +370,7 @@ libcmis_ObjectPtr libcmis_object_updateProperties(
         try
         {
             // Build the map of changed properties
-            PropertyPtrMap propertiesMap;
-            for ( vector< libcmis::PropertyPtr >::iterator it = properties->handle.begin( );
-                    it != properties->handle.end( ); ++it )
-            {
-                libcmis::PropertyPtr propHandle = *it;
-                propertiesMap[ propHandle->getPropertyType()->getId( ) ] = propHandle;
-            }
-
+            PropertyPtrMap propertiesMap = lcl_createPropertiesMap( properties );
             libcmis::ObjectPtr handle = object->handle->updateProperties( propertiesMap );
             result = new libcmis_object( );
             result->handle = handle;
@@ -377,10 +482,10 @@ void libcmis_object_move( libcmis_ObjectPtr object,
         {
             libcmis::FolderPtr sourceHandle;
             if ( source != NULL )
-                sourceHandle = source->handle;
+                sourceHandle = dynamic_pointer_cast< libcmis::Folder >( source->handle );
             libcmis::FolderPtr destHandle;
             if ( dest != NULL )
-                destHandle = dest->handle;
+                destHandle = dynamic_pointer_cast< libcmis::Folder >( dest->handle );
 
             object->handle->move( sourceHandle, destHandle );
         }

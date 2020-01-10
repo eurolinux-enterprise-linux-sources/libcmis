@@ -44,6 +44,8 @@ namespace libcmis
                  it != parents.end(); ++it )
             {
                 string path = ( *it )->getPath( );
+                if ( path.empty() )
+                    continue;
                 if ( path[path.size() - 1] != '/' )
                     path += "/";
                 path += getName( );
@@ -76,6 +78,7 @@ namespace libcmis
         return contentLength;
     }
 
+    // LCOV_EXCL_START
     string Document::toString( )
     {
         stringstream buf;
@@ -99,4 +102,5 @@ namespace libcmis
 
         return buf.str();
     }
+    // LCOV_EXCL_STOP
 }

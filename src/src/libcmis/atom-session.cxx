@@ -27,6 +27,8 @@
  */
 #include <string>
 
+#include <boost/shared_ptr.hpp>
+
 #include <libxml/parser.h>
 #include <libxml/tree.h>
 #include <libxml/xpath.h>
@@ -45,7 +47,17 @@ AtomPubSession::AtomPubSession( string atomPubUrl, string repositoryId,
     BaseSession( atomPubUrl, repositoryId, username, password, noSslCheck, oauth2, verbose ),
     m_repository( )
 {
-    initialize( );
+    libcmis::HttpResponsePtr response;
+    initialize( response );
+}
+
+AtomPubSession::AtomPubSession( string atomPubUrl, string repositoryId,
+        const HttpSession& httpSession, libcmis::HttpResponsePtr response )
+            throw ( libcmis::Exception ) :
+    BaseSession( atomPubUrl, repositoryId, httpSession ),
+    m_repository( )
+{
+    initialize( response );
 }
 
 AtomPubSession::AtomPubSession( const AtomPubSession& copy ) :
@@ -68,7 +80,7 @@ AtomPubSession& AtomPubSession::operator=( const AtomPubSession& copy )
         BaseSession::operator=( copy );
         m_repository = copy.m_repository;
     }
-    
+
     return *this;
 }
 
@@ -79,16 +91,16 @@ AtomPubSession::~AtomPubSession( )
 void AtomPubSession::parseServiceDocument( const string& buf ) throw ( libcmis::Exception )
 {
     // parse the content
-    xmlDocPtr doc = xmlReadMemory( buf.c_str(), buf.size(), m_bindingUrl.c_str(), NULL, 0 );
+    const boost::shared_ptr< xmlDoc > doc( xmlReadMemory( buf.c_str(), buf.size(), m_bindingUrl.c_str(), NULL, 0 ), xmlFreeDoc );
 
-    if ( NULL != doc )
+    if ( bool( doc ) )
     {
         // Check that we have an AtomPub service document
-        xmlNodePtr root = xmlDocGetRootElement( doc );
+        xmlNodePtr root = xmlDocGetRootElement( doc.get() );
         if ( !xmlStrEqual( root->name, BAD_CAST( "service" ) ) )
             throw libcmis::Exception( "Not an atompub service document" );
 
-        xmlXPathContextPtr xpathCtx = xmlXPathNewContext( doc );
+        xmlXPathContextPtr xpathCtx = xmlXPathNewContext( doc.get() );
 
         // Register the Service Document namespaces
         libcmis::registerNamespaces( xpathCtx );
@@ -126,31 +138,38 @@ void AtomPubSession::parseServiceDocument( const string& buf ) throw ( libcmis::
                     }
                 }
             }
+            xmlXPathFreeObject( xpathObj );
         }
         xmlXPathFreeContext( xpathCtx );
     }
     else
         throw libcmis::Exception( "Failed to parse service document" );
-
-    xmlFreeDoc( doc );
 }
 
-void AtomPubSession::initialize( ) throw ( libcmis::Exception )
+void AtomPubSession::initialize( libcmis::HttpResponsePtr response )
+    throw ( libcmis::Exception )
 {
     if ( m_repositories.empty() )
     {
         // Pull the content from sAtomPubUrl
         string buf;
-        try
+        if ( response )
         {
-            buf = httpGetRequest( m_bindingUrl )->getStream( )->str( );
+            buf = response->getStream( )->str( );
         }
-        catch ( const CurlException& e )
+        else
         {
-            throw e.getCmisException( );
+            try
+            {
+                buf = httpGetRequest( m_bindingUrl )->getStream( )->str( );
+            }
+            catch ( const CurlException& e )
+            {
+                throw e.getCmisException( );
+            }
         }
-    
-        parseServiceDocument( buf );   
+
+        parseServiceDocument( buf );
     }
 }
 
@@ -183,7 +202,7 @@ bool AtomPubSession::setRepository( string repositoryId )
     return found;
 }
 
-libcmis::ObjectPtr AtomPubSession::createObjectFromEntryDoc( xmlDocPtr doc )
+libcmis::ObjectPtr AtomPubSession::createObjectFromEntryDoc( xmlDocPtr doc, ResultObjectType res )
 {
     libcmis::ObjectPtr cmisObject;
 
@@ -204,11 +223,11 @@ libcmis::ObjectPtr AtomPubSession::createObjectFromEntryDoc( xmlDocPtr doc )
                 string baseType = libcmis::getXPathValue( xpathCtx, baseTypeReq );
 
                 xmlNodePtr node = xpathObj->nodesetval->nodeTab[0];
-                if ( baseType == "cmis:folder" )
+                if ( res == RESULT_FOLDER || baseType == "cmis:folder" )
                 {
                     cmisObject.reset( new AtomFolder( this, node ) );
                 }
-                else if ( baseType == "cmis:document" )
+                else if ( res == RESULT_DOCUMENT || baseType == "cmis:document" )
                 {
                     cmisObject.reset( new AtomDocument( this, node ) );
                 }
@@ -289,4 +308,59 @@ libcmis::ObjectTypePtr AtomPubSession::getType( string id ) throw ( libcmis::Exc
 {
     libcmis::ObjectTypePtr type( new AtomObjectType( this, id ) );
     return type;
+}
+
+vector< libcmis::ObjectTypePtr > AtomPubSession::getBaseTypes( ) throw ( libcmis::Exception )
+{
+    string url = getAtomRepository( )->getCollectionUrl( Collection::Types );
+    return getChildrenTypes( url );
+}
+
+vector< libcmis::ObjectTypePtr > AtomPubSession::getChildrenTypes( string url )
+    throw ( libcmis::Exception )
+{
+    vector< libcmis::ObjectTypePtr > children;
+    string buf;
+    try
+    {
+        buf = httpGetRequest( url )->getStream( )->str( );
+    }
+    catch ( const CurlException& e )
+    {
+        throw e.getCmisException( );
+    }
+
+    xmlDocPtr doc = xmlReadMemory( buf.c_str(), buf.size(), url.c_str(), NULL, 0 );
+    if ( NULL != doc )
+    {
+        xmlXPathContextPtr xpathCtx = xmlXPathNewContext( doc );
+        libcmis::registerNamespaces( xpathCtx );
+        if ( NULL != xpathCtx )
+        {
+            const string& entriesReq( "//atom:entry" );
+            xmlXPathObjectPtr xpathObj = xmlXPathEvalExpression( BAD_CAST( entriesReq.c_str() ), xpathCtx );
+
+            if ( NULL != xpathObj && NULL != xpathObj->nodesetval )
+            {
+                int size = xpathObj->nodesetval->nodeNr;
+                for ( int i = 0; i < size; i++ )
+                {
+                    xmlNodePtr node = xpathObj->nodesetval->nodeTab[i];
+                    libcmis::ObjectTypePtr type( new AtomObjectType( this, node ) );
+                    children.push_back( type );
+                }
+            }
+
+            xmlXPathFreeObject( xpathObj );
+        }
+
+        xmlXPathFreeContext( xpathCtx );
+    }
+    else
+    {
+        throw libcmis::Exception( "Failed to parse type children infos" );
+    }
+    xmlFreeDoc( doc );
+
+    return children;
 }

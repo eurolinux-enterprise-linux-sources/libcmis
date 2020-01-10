@@ -38,6 +38,7 @@
 #include <mockup-config.h>
 
 #include "gdrive-session.hxx"
+#include "gdrive-property.hxx"
 #include "oauth2-handler.hxx"
 #include "gdrive-object.hxx"
 #include "document.hxx"
@@ -56,6 +57,7 @@ static const string TOKEN_URL ( "https://token/url" );
 static const string SCOPE ( "https://scope/url" );
 static const string REDIRECT_URI ("redirect:uri" );
 static const string BASE_URL ( "https://base/url" );
+
 class GDriveTest : public CppUnit::TestFixture
 {
     public:
@@ -64,9 +66,13 @@ class GDriveTest : public CppUnit::TestFixture
         void sessionExpiryTokenPostTest( );
         void sessionExpiryTokenPutTest( );
         void sessionExpiryTokenDeleteTest( );
+        void setRepositoryTest( );
         void getRepositoriesTest( );
         void getTypeTest( );
         void getObjectTest( );
+        void getObjectByPathRootTest( );
+        void getObjectByPathTest( );
+        void getObjectByPathMissingTest( );
         void getDocumentTest( );
         void getFolderTest( );
         void getDocumentParentsTest( );
@@ -83,6 +89,7 @@ class GDriveTest : public CppUnit::TestFixture
         void createDocumentTest( );
         void createFolderTest( );
         void updatePropertiesTest( );
+        void propertyCopyTest( );
         void removeTreeTest( );
         void getContentStreamWithRenditionsTest( );
         void getRefreshTokenTest( );
@@ -95,14 +102,18 @@ class GDriveTest : public CppUnit::TestFixture
         CPPUNIT_TEST( sessionExpiryTokenPutTest );
         CPPUNIT_TEST( sessionExpiryTokenPostTest );
         CPPUNIT_TEST( sessionExpiryTokenDeleteTest );
+        CPPUNIT_TEST( setRepositoryTest );
         CPPUNIT_TEST( getRepositoriesTest );
         CPPUNIT_TEST( getTypeTest );
         CPPUNIT_TEST( getObjectTest );
+        CPPUNIT_TEST( getObjectByPathRootTest );
+        CPPUNIT_TEST( getObjectByPathTest );
+        CPPUNIT_TEST( getObjectByPathMissingTest );
         CPPUNIT_TEST( getDocumentTest );
         CPPUNIT_TEST( getFolderTest );
         CPPUNIT_TEST( getDocumentParentsTest );
-        CPPUNIT_TEST( getContentStreamTest ); 
-        CPPUNIT_TEST( setContentStreamTest );  
+        CPPUNIT_TEST( getContentStreamTest );
+        CPPUNIT_TEST( setContentStreamTest );
         CPPUNIT_TEST( setContentStreamGdocTest );
         CPPUNIT_TEST( getChildrenTest );
         CPPUNIT_TEST( getDocumentAllowableActionsTest );
@@ -114,6 +125,7 @@ class GDriveTest : public CppUnit::TestFixture
         CPPUNIT_TEST( createDocumentTest );
         CPPUNIT_TEST( createFolderTest );
         CPPUNIT_TEST( updatePropertiesTest );
+        CPPUNIT_TEST( propertyCopyTest );
         CPPUNIT_TEST( removeTreeTest );
         CPPUNIT_TEST( getContentStreamWithRenditionsTest );
         CPPUNIT_TEST( getRefreshTokenTest );
@@ -158,7 +170,7 @@ void GDriveTest::sessionAuthenticationTest( )
 {
     GDriveSession session = getTestSession( USERNAME, PASSWORD );
     string empty;
-    
+
     // Check authentication request
     string authRequest( curl_mockup_getRequestBody( LOGIN_URL.c_str(), empty.c_str( ),
                                                 "POST" ) );
@@ -168,20 +180,20 @@ void GDriveTest::sessionAuthenticationTest( )
 
     CPPUNIT_ASSERT_EQUAL_MESSAGE( "Wrong authentication request",
                                   expectedAuthRequest, authRequest );
-    
+
     // Check code request
     string codeRequest( curl_mockup_getRequestBody( APPROVAL_URL.c_str(),
                         empty.c_str( ), "POST" ) );
     string expectedCodeRequest = string( "state_wrapper=stateWrapper&submit_access=true" );
-    CPPUNIT_ASSERT_EQUAL_MESSAGE( "Wrong approval request", 
+    CPPUNIT_ASSERT_EQUAL_MESSAGE( "Wrong approval request",
                                   expectedCodeRequest, codeRequest);
-    
+
     // Check token request
-    string expectedTokenRequest = 
-        string( "code=AuthCode") + 
+    string expectedTokenRequest =
+        string( "code=AuthCode") +
         string( "&client_id=") + CLIENT_ID +
-        string( "&client_secret=") + CLIENT_SECRET + 
-        string( "&redirect_uri=") + REDIRECT_URI + 
+        string( "&client_secret=") + CLIENT_SECRET +
+        string( "&redirect_uri=") + REDIRECT_URI +
         string( "&grant_type=authorization_code" );
 
     string tokenRequest( curl_mockup_getRequestBody( TOKEN_URL.c_str(), empty.c_str( ),
@@ -191,12 +203,12 @@ void GDriveTest::sessionAuthenticationTest( )
 
     // Check token
     CPPUNIT_ASSERT_EQUAL_MESSAGE(
-        "Wrong access token", 
-         string ( "mock-access-token" ), 
+        "Wrong access token",
+         string ( "mock-access-token" ),
          session.m_oauth2Handler->getAccessToken( ));
-    CPPUNIT_ASSERT_EQUAL_MESSAGE( 
-        "Wrong refresh token", 
-        string ("mock-refresh-token"), 
+    CPPUNIT_ASSERT_EQUAL_MESSAGE(
+        "Wrong refresh token",
+        string ("mock-refresh-token"),
         session.m_oauth2Handler->getRefreshToken( ));
 }
 
@@ -204,10 +216,10 @@ void GDriveTest::sessionExpiryTokenGetTest( )
 {
     // Access_token will expire after expires_in seconds,
     // We need to use the refresh key to get a new one.
-    
+
     curl_mockup_reset( );
     GDriveSession session = getTestSession( USERNAME, PASSWORD );
-    
+
     curl_mockup_reset( );
     static const string objectId("aFileId");
     string url = BASE_URL + "/files/" + objectId;
@@ -232,17 +244,17 @@ void GDriveTest::sessionExpiryTokenGetTest( )
                    string ( "new-access-token" ),
                    session.m_oauth2Handler->getAccessToken( ) );
         }
-    } 
+    }
 }
 
 void GDriveTest::sessionExpiryTokenPostTest( )
 {
     // Access_token will expire after expires_in seconds,
     // We need to use the refresh key to get a new one.
-    
+
     curl_mockup_reset( );
     GDriveSession session = getTestSession( USERNAME, PASSWORD );
-    
+
     curl_mockup_reset( );
     static const string folderId("aFileId");
     const string folderUrl = BASE_URL + "/files/" + folderId;
@@ -251,18 +263,18 @@ void GDriveTest::sessionExpiryTokenPostTest( )
     curl_mockup_addResponse( TOKEN_URL.c_str(), "",
                              "POST", DATA_DIR "/gdrive/refresh_response.json", 200, true);
 
-    curl_mockup_addResponse( folderUrl.c_str( ), "", 
+    curl_mockup_addResponse( folderUrl.c_str( ), "",
                                "GET", DATA_DIR "/gdrive/folder.json", 200, true );
 
     // 401 response, token is expired
     // refresh and then POST again
     curl_mockup_addResponse( metaUrl.c_str( ), "",
-                               "POST", "", 401, false );    
+                               "POST", "", 401, false );
     libcmis::FolderPtr parent = session.getFolder( folderId );
-    
+
     try
     {
-         PropertyPtrMap properties;   
+         PropertyPtrMap properties;
         // POST expires, need to refresh then POST again
         parent->createFolder( properties );
     }
@@ -276,33 +288,33 @@ void GDriveTest::sessionExpiryTokenPostTest( )
                    string ( "new-access-token" ),
                    session.m_oauth2Handler->getAccessToken( ) );
         }
-    }    
+    }
 }
 
 void GDriveTest::sessionExpiryTokenDeleteTest( )
 {
     // Access_token will expire after expires_in seconds,
     // We need to use the refresh key to get a new one.
-    
+
     curl_mockup_reset( );
     GDriveSession session = getTestSession( USERNAME, PASSWORD );
-    
+
     curl_mockup_reset( );
     static const string objectId("aFileId");
     string url = BASE_URL + "/files/" + objectId;
-  
+
     curl_mockup_addResponse( url.c_str( ), "",
                                "GET", DATA_DIR "/gdrive/document2.json", 200, true);
-   
+
     curl_mockup_addResponse( TOKEN_URL.c_str(), "",
                              "POST", DATA_DIR "/gdrive/refresh_response.json", 200, true);
     // 401 response, token is expired
     curl_mockup_addResponse( url.c_str( ),"", "DELETE", "", 401, false);
-    
+
     libcmis::ObjectPtr obj = session.getObject( objectId );
 
     libcmis::ObjectPtr object = session.getObject( objectId );
-    
+
     try
     {
         // DELETE expires, need to refresh then DELETE again
@@ -319,32 +331,33 @@ void GDriveTest::sessionExpiryTokenDeleteTest( )
                    session.m_oauth2Handler->getAccessToken( ) );
             const struct HttpRequest* deleteRequest = curl_mockup_getRequest( url.c_str( ), "", "DELETE" );
             CPPUNIT_ASSERT_MESSAGE( "Delete request not sent", deleteRequest );
+            curl_mockup_HttpRequest_free( deleteRequest );
         }
     }
-    
+
 }
 
 void GDriveTest::sessionExpiryTokenPutTest( )
 {
     // Access_token will expire after expires_in seconds,
     // We need to use the refresh key to get a new one.
-    
+
     curl_mockup_reset( );
     GDriveSession session = getTestSession( USERNAME, PASSWORD );
-    
+
     curl_mockup_reset( );
     static const string objectId("aFileId");
-    string url = BASE_URL + "/files/" + objectId;  
+    string url = BASE_URL + "/files/" + objectId;
 
     curl_mockup_addResponse( TOKEN_URL.c_str(), "",
                              "POST", DATA_DIR "/gdrive/refresh_response.json", 200, true);
 
-    curl_mockup_addResponse( url.c_str( ), "", 
+    curl_mockup_addResponse( url.c_str( ), "",
                                "GET", DATA_DIR "/gdrive/document.json", 200, true );
 
     // 401 response, token is expired
     curl_mockup_addResponse( url.c_str( ),"", "PUT", "", 401, false );
- 
+
     libcmis::ObjectPtr object = session.getObject( objectId );
 
     try
@@ -365,38 +378,45 @@ void GDriveTest::sessionExpiryTokenPutTest( )
     }
 }
 
+void GDriveTest::setRepositoryTest( )
+{
+    GDriveSession session;
+    CPPUNIT_ASSERT_MESSAGE( "Should never fail", session.setRepository( "foobar" ) );
+}
+
 void GDriveTest::getDocumentTest( )
 {
     curl_mockup_reset( );
     static const string objectId ("aFileId");
- 
+
     GDriveSession session = getTestSession( USERNAME, PASSWORD );
     string url = BASE_URL + "/files/" + objectId;
     curl_mockup_addResponse( url.c_str( ), "",
                              "GET", DATA_DIR "/gdrive/document.json", 200, true);
 
     libcmis::ObjectPtr obj = session.getObject( objectId );
- 
+
     // Check if we got the document object.
     libcmis::DocumentPtr document = boost::dynamic_pointer_cast< libcmis::Document >( obj );
     CPPUNIT_ASSERT_MESSAGE( "Fetched object should be an instance of libcmis::DocumentPtr",
             NULL != document );
- 
+
     // Test the document properties
     CPPUNIT_ASSERT_EQUAL_MESSAGE( "Wrong document ID", objectId, document->getId( ) );
-    CPPUNIT_ASSERT_EQUAL_MESSAGE( "Wrong document name", 
-                                  string( "GDrive File" ), 
+    CPPUNIT_ASSERT_EQUAL_MESSAGE( "Wrong document name",
+                                  string( "GDrive File" ),
                                   document->getName( ) );
-    CPPUNIT_ASSERT_EQUAL_MESSAGE( "Wrong document type", 
-                                  string( "application/vnd.google-apps.form" ), 
+    CPPUNIT_ASSERT_EQUAL_MESSAGE( "Wrong document type",
+                                  string( "application/vnd.google-apps.form" ),
                                   document->getContentType( ) );
     CPPUNIT_ASSERT_EQUAL_MESSAGE( "Wrong base type", string( "cmis:document" ), document->getBaseType( ) );
+    CPPUNIT_ASSERT_EQUAL_MESSAGE( "Wrong type", string( "cmis:document" ), document->getType( ) );
 
     CPPUNIT_ASSERT_MESSAGE( "CreatedBy is missing", !document->getCreatedBy( ).empty( ) );
     CPPUNIT_ASSERT_MESSAGE( "CreationDate is missing", !document->getCreationDate( ).is_not_a_date_time() );
     CPPUNIT_ASSERT_MESSAGE( "LastModifiedBy is missing", !document->getLastModifiedBy( ).empty( ) );
     CPPUNIT_ASSERT_MESSAGE( "LastModificationDate is missing", !document->getLastModificationDate( ).is_not_a_date_time() );
- 
+
     CPPUNIT_ASSERT_MESSAGE( "Content length is incorrect", 123 == document->getContentLength( ) );
 }
 
@@ -404,7 +424,7 @@ void GDriveTest::getFolderTest( )
 {
     curl_mockup_reset( );
 
-    GDriveSession session = getTestSession( USERNAME, PASSWORD );    
+    GDriveSession session = getTestSession( USERNAME, PASSWORD );
     static const string folderId( "aFolderId" );
     static const string parentId( "parentID" );
     string url = BASE_URL + "/files/" + folderId;
@@ -423,9 +443,10 @@ void GDriveTest::getFolderTest( )
     CPPUNIT_ASSERT_EQUAL_MESSAGE( "Wrong folder ID", folderId, folder->getId( ) );
     CPPUNIT_ASSERT_EQUAL_MESSAGE( "Wrong folder name", string( "testFolder" ), folder->getName( ) );
     CPPUNIT_ASSERT_EQUAL_MESSAGE( "Wrong base type", string( "cmis:folder" ), folder->getBaseType( ) );
+    CPPUNIT_ASSERT_EQUAL_MESSAGE( "Wrong type", string( "cmis:folder" ), folder->getType( ) );
     CPPUNIT_ASSERT_MESSAGE( "Missing folder parent", folder->getFolderParent( ).get( ) );
     CPPUNIT_ASSERT_MESSAGE( "Not a root folder", !folder->isRootFolder() );
- 
+
     CPPUNIT_ASSERT_MESSAGE( "CreatedBy is missing", !folder->getCreatedBy( ).empty( ) );
     CPPUNIT_ASSERT_MESSAGE( "CreationDate is missing", !folder->getCreationDate( ).is_not_a_date_time() );
     CPPUNIT_ASSERT_MESSAGE( "LastModifiedBy is missing", !folder->getLastModifiedBy( ).empty( ) );
@@ -453,13 +474,13 @@ void GDriveTest::getDocumentParentsTest( )
 
     libcmis::ObjectPtr object = session.getObject( "aFileId" );
     libcmis::DocumentPtr document = boost::dynamic_pointer_cast< libcmis::Document >( object );
- 
+
     CPPUNIT_ASSERT_MESSAGE( "Document expected", document != NULL );
-    
+
     vector< libcmis::FolderPtr > parents= document->getParents( );
- 
+
     CPPUNIT_ASSERT_EQUAL_MESSAGE( "Bad number of parents", size_t( 2 ), parents.size() );
-    
+
     CPPUNIT_ASSERT_EQUAL_MESSAGE( "Wrong parent Id", parentId, parents[0]->getId( ) );
     CPPUNIT_ASSERT_EQUAL_MESSAGE( "Wrong parent Id", parentId2, parents[1]->getId( ) );
 }
@@ -476,7 +497,7 @@ void GDriveTest::getContentStreamTest( )
     string expectedContent( "Test content stream" );
     string downloadUrl = "https://downloadLink";
     curl_mockup_addResponse( downloadUrl.c_str( ), "", "GET", expectedContent.c_str( ), 0, false );
-    
+
     libcmis::ObjectPtr object = session.getObject( documentId );
     libcmis::DocumentPtr document = boost::dynamic_pointer_cast< libcmis::Document >( object );
 
@@ -485,7 +506,7 @@ void GDriveTest::getContentStreamTest( )
         boost::shared_ptr< istream >  is = document->getContentStream( );
         ostringstream out;
         out << is->rdbuf();
- 
+
         CPPUNIT_ASSERT_EQUAL_MESSAGE( "Content stream doesn't match", expectedContent, out.str( ) );
     }
     catch ( const libcmis::Exception& e )
@@ -497,7 +518,7 @@ void GDriveTest::getContentStreamTest( )
 }
 
 void GDriveTest::setContentStreamTest( )
-{   
+{
     curl_mockup_reset( );
     GDriveSession session = getTestSession( USERNAME, PASSWORD );
 
@@ -508,7 +529,7 @@ void GDriveTest::setContentStreamTest( )
     string putUrl = uploadBaseUrl + documentId;
     curl_mockup_addResponse( url.c_str( ), "",
                                "GET", DATA_DIR "/gdrive/document2.json", 200, true);
-       
+
     libcmis::ObjectPtr object = session.getObject( documentId );
     libcmis::DocumentPtr document = boost::dynamic_pointer_cast< libcmis::Document >( object );
 
@@ -521,7 +542,7 @@ void GDriveTest::setContentStreamTest( )
         boost::shared_ptr< ostream > os ( new stringstream ( expectedContent ) );
         string filename( "aFileName" );
         document->setContentStream( os, "text/plain", filename );
-        
+
         CPPUNIT_ASSERT_MESSAGE( "Object not refreshed during setContentStream", object->getRefreshTimestamp( ) > 0 );
 
         // Check if metadata has been properly uploaded
@@ -542,7 +563,7 @@ void GDriveTest::setContentStreamTest( )
 
 void GDriveTest::setContentStreamGdocTest( )
 {
-    
+
     curl_mockup_reset( );
     GDriveSession session = getTestSession( USERNAME, PASSWORD );
 
@@ -553,7 +574,7 @@ void GDriveTest::setContentStreamGdocTest( )
     string putUrl = uploadBaseUrl + documentId;
     curl_mockup_addResponse( url.c_str( ), "",
                                "GET", DATA_DIR "/gdrive/document.json", 200, true);
-   
+
     libcmis::ObjectPtr object = session.getObject( documentId );
     libcmis::DocumentPtr document = boost::dynamic_pointer_cast< libcmis::Document >( object );
 
@@ -566,7 +587,7 @@ void GDriveTest::setContentStreamGdocTest( )
         boost::shared_ptr< ostream > os ( new stringstream ( expectedContent ) );
         string filename( "aFileName" );
         document->setContentStream( os, "text/plain", filename );
-        
+
         CPPUNIT_ASSERT_MESSAGE( "Object not refreshed during setContentStream", object->getRefreshTimestamp( ) > 0 );
 
         // Check the content has been properly uploaded
@@ -585,12 +606,12 @@ void GDriveTest::getChildrenTest( )
 {
     curl_mockup_reset( );
 
-    GDriveSession session = getTestSession( USERNAME, PASSWORD );    
+    GDriveSession session = getTestSession( USERNAME, PASSWORD );
     static const string folderId ("aFolderId");
     string url = BASE_URL + "/files/" + folderId;
     curl_mockup_addResponse( url.c_str( ), "",
                              "GET", DATA_DIR "/gdrive/folder.json", 200, true);
-    
+
     string urlChildFolder = BASE_URL + "/files/" + string ("aChildFolder");
     curl_mockup_addResponse( urlChildFolder.c_str( ), "",
                              "GET", DATA_DIR "/gdrive/folder.json", 200, true);
@@ -598,24 +619,24 @@ void GDriveTest::getChildrenTest( )
     string urlChildDocument = BASE_URL + "/files/" + string ("aChildDocument");
     curl_mockup_addResponse( urlChildDocument.c_str( ), "",
                              "GET", DATA_DIR "/gdrive/document.json", 200, true);
-    
+
     libcmis::ObjectPtr obj = session.getObject( folderId );
- 
+
     // Check if we got the Folder object.
     libcmis::FolderPtr folder = boost::dynamic_pointer_cast< libcmis::Folder >( obj );
 
     CPPUNIT_ASSERT_MESSAGE( "Folder expected", folder != NULL );
-    
-    
+
+
     string query = "q=\"" + folderId + "\"+in+parents+and+trashed+=+false";
     string childrenUrl = BASE_URL + "/files";
     curl_mockup_addResponse( childrenUrl.c_str( ), query.c_str( ),
                              "GET", DATA_DIR "/gdrive/folder_children.json", 200, true);
 
     vector< libcmis::ObjectPtr > children= folder->getChildren( );
- 
+
     CPPUNIT_ASSERT_EQUAL_MESSAGE( "Bad number of children", size_t( 2 ), children.size() );
-    
+
     int folderCount = 0;
     int documentCount = 0;
     for ( vector< libcmis::ObjectPtr >::iterator it = children.begin( );
@@ -633,23 +654,23 @@ void GDriveTest::getChildrenTest( )
 void GDriveTest::getTypeTest( )
 {
     curl_mockup_reset( );
- 
+
     GDriveSession session = getTestSession( USERNAME, PASSWORD );
 
     string expectedId( "cmis:document" );
     libcmis::ObjectTypePtr actual = session.getType( expectedId );
- 
+
     CPPUNIT_ASSERT_EQUAL_MESSAGE( "Wrong Id for fetched type", expectedId, actual->getId( ) );
 }
 
 void GDriveTest::getRepositoriesTest( )
 {
      curl_mockup_reset( );
- 
+
      GDriveSession session = getTestSession( USERNAME, PASSWORD );
      vector< libcmis::RepositoryPtr > actual = session.getRepositories( );
- 
-     CPPUNIT_ASSERT_EQUAL_MESSAGE( "Wrong number of repositories", size_t( 1 ), 
+
+     CPPUNIT_ASSERT_EQUAL_MESSAGE( "Wrong number of repositories", size_t( 1 ),
                                    actual.size( ) );
      CPPUNIT_ASSERT_EQUAL_MESSAGE( "Wrong repository found",
                                    string ( "GoogleDrive" ),
@@ -671,18 +692,71 @@ void GDriveTest::getObjectTest()
                                                      obj->getId( ) );
 }
 
+void GDriveTest::getObjectByPathRootTest()
+{
+    GDriveSession session = getTestSession( USERNAME, PASSWORD );
+    string rootUrl = BASE_URL + "/files/root";
+    curl_mockup_addResponse ( rootUrl.c_str( ), "",
+                              "GET", DATA_DIR "/gdrive/folder.json", 200, true);
+
+    libcmis::ObjectPtr object = session.getObjectByPath( "/" );
+    CPPUNIT_ASSERT_EQUAL_MESSAGE( "Wrong Object Id",
+                                  string("testFolder"), object->getName( ) );
+}
+
+void GDriveTest::getObjectByPathTest()
+{
+    // Mockup setup
+    GDriveSession session = getTestSession( USERNAME, PASSWORD );
+    string rootChildUrl = BASE_URL + "/files/root/children/";
+    curl_mockup_addResponse ( rootChildUrl.c_str( ), "q=title+=+'GDrive File'",
+                              "GET", DATA_DIR "/gdrive/root_child_search.json", 200, true );
+
+    string urlRootChildDoc = BASE_URL + "/files/aRootChildId2";
+    curl_mockup_addResponse( urlRootChildDoc.c_str( ), "",
+                             "GET", DATA_DIR "/gdrive/document.json", 200, true );
+
+    // Tested method
+    libcmis::ObjectPtr object = session.getObjectByPath( "/GDrive File" );
+
+    // Check the result
+    CPPUNIT_ASSERT_EQUAL_MESSAGE( "Wrong Object",
+                                  string("GDrive File"), object->getName( ) );
+}
+
+void GDriveTest::getObjectByPathMissingTest()
+{
+    // Mockup setup
+    GDriveSession session = getTestSession( USERNAME, PASSWORD );
+    string rootChildUrl = BASE_URL + "/files/root/children/";
+    curl_mockup_addResponse ( rootChildUrl.c_str( ), "q=title+=+'GDrive File'",
+                              "GET", DATA_DIR "/gdrive/root_child_missing.json", 200, true );
+
+    // Tested method
+    try
+    {
+        libcmis::ObjectPtr object = session.getObjectByPath( "/GDrive File" );
+        CPPUNIT_FAIL( "objectNotFound exception expected" );
+    }
+    catch ( libcmis::Exception& e )
+    {
+        CPPUNIT_ASSERT_EQUAL_MESSAGE("Bad exception type",
+                                     string( "objectNotFound" ), e.getType( ) );
+    }
+}
+
 void GDriveTest::getDocumentAllowableActionsTest( )
 {
     curl_mockup_reset( );
     static const string objectId ("aFileId");
- 
+
     GDriveSession session = getTestSession( USERNAME, PASSWORD );
     string url = BASE_URL + "/files/" + objectId;
     curl_mockup_addResponse( url.c_str( ), "",
                              "GET", DATA_DIR "/gdrive/document.json", 200, true);
 
     libcmis::ObjectPtr obj = session.getObject( objectId );
- 
+
     libcmis::DocumentPtr document = boost::dynamic_pointer_cast< libcmis::Document >( obj );
 
     boost::shared_ptr< libcmis::AllowableActions > actions = document->getAllowableActions( );
@@ -699,7 +773,7 @@ void GDriveTest::getFolderAllowableActionsTest( )
 {
     curl_mockup_reset( );
     static const string folderId ("aFolderId");
- 
+
     GDriveSession session = getTestSession( USERNAME, PASSWORD );
     string url = BASE_URL + "/files/" + folderId;
     curl_mockup_addResponse( url.c_str( ), "",
@@ -727,7 +801,7 @@ void GDriveTest::checkOutTest( )
     string url = BASE_URL + "/files/" + documentId;
     curl_mockup_addResponse( url.c_str( ), "",
                                "GET", DATA_DIR "/gdrive/document.json", 200, true);
-    
+
     libcmis::ObjectPtr object = session.getObject( documentId );
     libcmis::DocumentPtr document = boost::dynamic_pointer_cast< libcmis::Document >( object );
     libcmis::DocumentPtr checkout = document->checkOut( );
@@ -746,14 +820,14 @@ void GDriveTest::checkInTest( )
     string putUrl = uploadBaseUrl + documentId;
     curl_mockup_addResponse( url.c_str( ), "",
                                "GET", DATA_DIR "/gdrive/document2.json", 200, true);
-   
+
     libcmis::ObjectPtr object = session.getObject( documentId );
     libcmis::DocumentPtr document = boost::dynamic_pointer_cast< libcmis::Document >( object );
 
     curl_mockup_addResponse( url.c_str( ), "",
                                "PUT", DATA_DIR "/gdrive/document2.json", 200, true);
     curl_mockup_addResponse( putUrl.c_str( ), "", "PUT", "Updated", 0, false );
-   
+
     string expectedContent( "content stream" );
     boost::shared_ptr< ostream > os ( new stringstream ( expectedContent ) );
     string filename( "aFileName" );
@@ -776,10 +850,11 @@ void GDriveTest::deleteTest( )
     curl_mockup_addResponse( url.c_str( ),"", "DELETE", "", 204, false);
 
     libcmis::ObjectPtr object = session.getObject( objectId );
-    
+
     object->remove( );
     const struct HttpRequest* deleteRequest = curl_mockup_getRequest( url.c_str( ), "", "DELETE" );
     CPPUNIT_ASSERT_MESSAGE( "Delete request not sent", deleteRequest );
+    curl_mockup_HttpRequest_free( deleteRequest );
 }
 
 void GDriveTest::moveTest( )
@@ -795,7 +870,7 @@ void GDriveTest::moveTest( )
     string desUrl = BASE_URL + "/files/" + desId;
     curl_mockup_addResponse( url.c_str( ), "",
                                "GET", DATA_DIR "/gdrive/document2.json", 200, true );
-    curl_mockup_addResponse( url.c_str( ), "", 
+    curl_mockup_addResponse( url.c_str( ), "",
                                "PUT", DATA_DIR "/gdrive/document2.json", 200, true );
     curl_mockup_addResponse( sourceUrl.c_str( ), "",
                                "GET", DATA_DIR "/gdrive/folder.json", 200, true );
@@ -803,15 +878,15 @@ void GDriveTest::moveTest( )
                                "GET", DATA_DIR "/gdrive/folder2.json", 200, true );
 
     libcmis::ObjectPtr object = session.getObject( objectId );
-    
+
     libcmis::FolderPtr source = session.getFolder( sourceId );
-    libcmis::FolderPtr destination = session.getFolder( desId );    
+    libcmis::FolderPtr destination = session.getFolder( desId );
 
     object->move( source, destination );
     const char* moveRequest = curl_mockup_getRequestBody( url.c_str( ), "", "PUT" );
     Json parentJson = Json::parse( string( moveRequest ) );
     string newParentId = parentJson["parents"].getList().front()["id"].toString( );
-    CPPUNIT_ASSERT_EQUAL_MESSAGE( "Bad new parent folder", 
+    CPPUNIT_ASSERT_EQUAL_MESSAGE( "Bad new parent folder",
                                   desId, newParentId);
 }
 
@@ -828,7 +903,7 @@ void GDriveTest::createDocumentTest( )
     string uploadUrl = uploadBaseUrl + documentId;
     string documentUrl = metaUrl + documentId;
 
-    curl_mockup_addResponse( folderUrl.c_str( ), "", 
+    curl_mockup_addResponse( folderUrl.c_str( ), "",
                                "GET", DATA_DIR "/gdrive/folder.json", 200, true );
     curl_mockup_addResponse( metaUrl.c_str( ), "",
                                "POST", DATA_DIR "/gdrive/document.json", 200, true );
@@ -836,7 +911,7 @@ void GDriveTest::createDocumentTest( )
                                "PUT", "updated", 0, false );
     curl_mockup_addResponse( documentUrl.c_str( ), "",
                                "GET", DATA_DIR "/gdrive/document2.json", 200, true);
-    
+
     libcmis::FolderPtr parent = session.getFolder( folderId );
 
     try
@@ -845,7 +920,7 @@ void GDriveTest::createDocumentTest( )
         boost::shared_ptr< ostream > os ( new stringstream ( expectedContent ) );
         string filename( "aFileName" );
         PropertyPtrMap properties;
-        
+
         // function to test
         parent->createDocument( properties, os, "text/plain", filename );
 
@@ -874,17 +949,17 @@ void GDriveTest::createFolderTest( )
     const string folderId( "aFolderId" );
 
     const string folderUrl = BASE_URL + "/files/" + folderId;
-    const string metaUrl = BASE_URL + "/files";
-   
-    curl_mockup_addResponse( folderUrl.c_str( ), "", 
+    const string metaUrl = BASE_URL + "/files/";
+
+    curl_mockup_addResponse( folderUrl.c_str( ), "",
                                "GET", DATA_DIR "/gdrive/folder.json", 200, true );
     curl_mockup_addResponse( metaUrl.c_str( ), "",
-                               "POST", DATA_DIR "/gdrive/folder2.json", 200, true );    
+                               "POST", DATA_DIR "/gdrive/folder2.json", 200, true );
     libcmis::FolderPtr parent = session.getFolder( folderId );
     try
-    {       
+    {
         PropertyPtrMap properties;
-        
+
         // function to test
         parent->createFolder( properties );
 
@@ -894,7 +969,7 @@ void GDriveTest::createFolderTest( )
         string sentParentId = request["parents"].getList( ).front( )["id"].toString( );
         string sentMimeType = request["mimeType"].toString( );
         string expectedMimeType( "application/vnd.google-apps.folder" );
-     
+
         CPPUNIT_ASSERT_EQUAL_MESSAGE( "Bad parents sent", folderId, sentParentId );
         CPPUNIT_ASSERT_EQUAL_MESSAGE( "Bad mimeType", expectedMimeType, sentMimeType );
     }
@@ -914,14 +989,14 @@ void GDriveTest::removeTreeTest( )
 
     const string folderUrl = BASE_URL + "/files/" + folderId;
     const string trashUrl = folderUrl + "/trash";
-   
-    curl_mockup_addResponse( folderUrl.c_str( ), "", 
+
+    curl_mockup_addResponse( folderUrl.c_str( ), "",
                                "GET", DATA_DIR "/gdrive/folder.json", 200, true );
     curl_mockup_addResponse( trashUrl.c_str( ), "",
-                               "POST", "", 200, false );    
+                               "POST", "", 200, false );
     libcmis::FolderPtr folder = session.getFolder( folderId );
 
-    // just make sure it doesn't crash 
+    // just make sure it doesn't crash
     folder->removeTree( );
 }
 
@@ -940,14 +1015,14 @@ void GDriveTest::getContentStreamWithRenditionsTest( )
     // pdf stream
     string pdfContent( "pdf Content stream" );
     string pdfUrl = "pdflink";
-    curl_mockup_addResponse( pdfUrl.c_str( ), "", "GET", pdfContent.c_str( ), 0, false );    
-    
+    curl_mockup_addResponse( pdfUrl.c_str( ), "", "GET", pdfContent.c_str( ), 0, false );
+
     try
     {
         boost::shared_ptr< istream >  is = document->getContentStream( "application/pdf" );
         ostringstream out;
         out << is->rdbuf();
- 
+
         CPPUNIT_ASSERT_EQUAL_MESSAGE( "Content stream doesn't match", pdfContent, out.str( ) );
     }
     catch ( const libcmis::Exception& e )
@@ -960,13 +1035,13 @@ void GDriveTest::getContentStreamWithRenditionsTest( )
     // ODF stream
     string odfContent( "open document Content stream" );
     string odfUrl = "https://downloadLink";
-    curl_mockup_addResponse( odfUrl.c_str( ), "", "GET", odfContent.c_str( ), 0, false );       
+    curl_mockup_addResponse( odfUrl.c_str( ), "", "GET", odfContent.c_str( ), 0, false );
     try
     {
         boost::shared_ptr< istream >  is = document->getContentStream( "application/x-vnd.oasis.opendocument.spreadsheet" );
         ostringstream out;
         out << is->rdbuf();
- 
+
         CPPUNIT_ASSERT_EQUAL_MESSAGE( "Content stream doesn't match", odfContent, out.str( ) );
     }
     catch ( const libcmis::Exception& e )
@@ -979,14 +1054,14 @@ void GDriveTest::getContentStreamWithRenditionsTest( )
     // MS stream
     string msContent( "office document Content stream" );
     string msUrl = "xlslink";
-    curl_mockup_addResponse( msUrl.c_str( ), "", "GET", msContent.c_str( ), 0, false );       
+    curl_mockup_addResponse( msUrl.c_str( ), "", "GET", msContent.c_str( ), 0, false );
     try
     {
-        boost::shared_ptr< istream >  is = document->getContentStream( 
+        boost::shared_ptr< istream >  is = document->getContentStream(
                     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" );
         ostringstream out;
         out << is->rdbuf();
- 
+
         CPPUNIT_ASSERT_EQUAL_MESSAGE( "Content stream doesn't match", msContent, out.str( ) );
     }
     catch ( const libcmis::Exception& e )
@@ -1002,34 +1077,66 @@ void GDriveTest::updatePropertiesTest( )
     curl_mockup_reset( );
     GDriveSession session = getTestSession( USERNAME, PASSWORD );
     const string documentId( "aFileId" );
-
     const string documentUrl = BASE_URL + "/files/" + documentId;
-   
-    curl_mockup_addResponse( documentUrl.c_str( ), "", 
+    curl_mockup_addResponse( documentUrl.c_str( ), "",
                                "GET", DATA_DIR "/gdrive/document.json", 200, true );
     curl_mockup_addResponse( documentUrl.c_str( ), "",
-                               "PUT", DATA_DIR "/gdrive/document.json", 200, true );   
- 
-    libcmis::ObjectPtr document = session.getObject( documentId );
- 
-    document->updateProperties( document->getProperties( ) );
-    
+                               "PUT", DATA_DIR "/gdrive/document-updated.json", 200, true );
+
+
+    // Values for the test
+    string propertyName( "cmis:name" );
+    string expectedValue( "New Title" );
+    libcmis::ObjectPtr object = session.getObject( documentId );
+
+    // Fill the map of properties to change
+    PropertyPtrMap newProperties;
+
+    libcmis::ObjectTypePtr objectType = object->getTypeDescription( );
+    map< string, libcmis::PropertyTypePtr >::iterator it = objectType->getPropertiesTypes( ).find( propertyName );
+    vector< string > values;
+    values.push_back( expectedValue );
+    libcmis::PropertyPtr property( new libcmis::Property( it->second, values ) );
+    newProperties[ propertyName ] = property;
+
+    // Update the properties (method to test)
+    object->updateProperties( newProperties );
+
+    // Check that the sent request is OK
     const char* updateRequest = curl_mockup_getRequestBody( documentUrl.c_str( ), "", "PUT" );
 
-    // Check if properties keys are properly converted back before sending
+    // Check the sent properties
     Json json = Json::parse( string( updateRequest ) );
-    string id = json["id"].toString( );
-    string createdDate = json["createdDate"].toString( );
-    string title = json["title"].toString( );
-    string mimeType = json["mimeType"].toString( );
+    CPPUNIT_ASSERT_EQUAL_MESSAGE( "Only the updated properties should be sent",
+                                  size_t( 1 ), json.getObjects().size( ) );
+    CPPUNIT_ASSERT_EQUAL_MESSAGE( "title key not present",
+                                  expectedValue, json["title"].toString( ) );
 
-    CPPUNIT_ASSERT_EQUAL_MESSAGE( "id key not converted", documentId, id );
-    CPPUNIT_ASSERT_EQUAL_MESSAGE( "createdDate key not converted", 
-                    string( "2010-04-28T14:53:23.141Z"), createdDate );
-    CPPUNIT_ASSERT_EQUAL_MESSAGE( "title key not converted", 
-                                  string( "GDrive File"), title );
-    CPPUNIT_ASSERT_EQUAL_MESSAGE( "mimeType key not converted", 
-                    string( "application/vnd.google-apps.form"), mimeType );
+    // Check that the object is updated
+    CPPUNIT_ASSERT_EQUAL_MESSAGE( "Object not updated",
+                                  expectedValue, object->getName() );
+}
+
+void GDriveTest::propertyCopyTest( )
+{
+    string name = "cmis:name";
+    string value = "some value";
+
+    GDriveProperty property( name, Json( value.c_str() ) );
+    {
+        GDriveProperty copy = property;
+
+        CPPUNIT_ASSERT_EQUAL( name, copy.getPropertyType()->getId() );
+        CPPUNIT_ASSERT_EQUAL( value, copy.getStrings()[0] );
+    }
+
+    {
+        GDriveProperty copy;
+        copy = property;
+
+        CPPUNIT_ASSERT_EQUAL( name, copy.getPropertyType()->getId() );
+        CPPUNIT_ASSERT_EQUAL( value, copy.getStrings()[0] );
+    }
 }
 
 void GDriveTest::getRefreshTokenTest( )
@@ -1048,10 +1155,10 @@ void GDriveTest::getThumbnailUrlTest( )
     const string documentId( "aFileId" );
 
     const string documentUrl = BASE_URL + "/files/" + documentId;
-   
-    curl_mockup_addResponse( documentUrl.c_str( ), "", 
+
+    curl_mockup_addResponse( documentUrl.c_str( ), "",
                                "GET", DATA_DIR "/gdrive/document.json", 200, true );
- 
+
     libcmis::ObjectPtr document = session.getObject( documentId );
     CPPUNIT_ASSERT_EQUAL_MESSAGE( "Thumbnail URL does not match",
                                    string ("https://aThumbnailLink"),
@@ -1063,7 +1170,7 @@ void GDriveTest::getAllVersionsTest( )
 {
     curl_mockup_reset( );
     static const string objectId ("aFileId");
- 
+
     GDriveSession session = getTestSession( USERNAME, PASSWORD );
     string url = BASE_URL + "/files/" + objectId;
     curl_mockup_addResponse( url.c_str( ), "",
@@ -1073,12 +1180,12 @@ void GDriveTest::getAllVersionsTest( )
                              "GET", DATA_DIR "/gdrive/allVersions.json", 200, true);
 
     libcmis::ObjectPtr obj = session.getObject( objectId );
- 
+
     libcmis::DocumentPtr document = boost::dynamic_pointer_cast< libcmis::Document >( obj );
-    
+
     // Method to test
     vector< libcmis::DocumentPtr > versions = document->getAllVersions( );
-    
+
     CPPUNIT_ASSERT_EQUAL_MESSAGE( "Wrong number of versions", size_t( 3 ), versions.size( ) );
 }
 

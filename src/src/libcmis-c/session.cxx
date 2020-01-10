@@ -108,7 +108,7 @@ libcmis_FolderPtr libcmis_session_getRootFolder(
         {
             libcmis::FolderPtr handle = session->handle->getRootFolder( );
             folder = new libcmis_folder( );
-            folder->setHandle( handle );
+            folder->handle = handle;
         }
         catch ( const libcmis::Exception& e )
         {
@@ -213,7 +213,7 @@ libcmis_FolderPtr libcmis_session_getFolder(
         {
             libcmis::FolderPtr handle = session->handle->getFolder( string( id ) );
             folder = new libcmis_folder( );
-            folder->setHandle( handle );
+            folder->handle = handle;
         }
         catch ( const libcmis::Exception& e )
         {
@@ -268,4 +268,37 @@ libcmis_ObjectTypePtr libcmis_session_getType(
         }
     }
     return type;
+}
+
+libcmis_vector_object_type_Ptr libcmis_session_getBaseTypes(
+        libcmis_SessionPtr session,
+        libcmis_ErrorPtr error )
+{
+    libcmis_vector_object_type_Ptr types = NULL;
+    if ( session != NULL && session->handle != NULL )
+    {
+        try
+        {
+            vector< libcmis::ObjectTypePtr > handles = session->handle->getBaseTypes( );
+            types = new libcmis_vector_object_type( );
+            types->handle = handles;
+        }
+        catch ( const libcmis::Exception& e )
+        {
+            if ( error != NULL )
+            {
+                error->message = strdup( e.what() );
+                error->type = strdup( e.getType().c_str() );
+            }
+        }
+        catch ( const bad_alloc& e )
+        {
+            if ( error != NULL )
+            {
+                error->message = strdup( e.what() );
+                error->badAlloc = true;
+            }
+        }
+    }
+    return types;
 }

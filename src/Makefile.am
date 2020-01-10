@@ -1,3 +1,5 @@
+include $(top_srcdir)/coverage.mk
+
 SUBDIRS = src qa
 ACLOCAL_AMFLAGS = -I m4
 
@@ -28,30 +30,24 @@ dist_man_MANS = doc/cmis-client.xml
 EXTRA_DIST = \
 	libcmis.pc.in \
 	libcmis-c.pc.in \
-	run-test.sh \
 	COPYING.MPL \
 	COPYING.GPL \
 	COPYING.LGPL \
 	doc/cmis-client.xml \
 	cppcheck-test.sh \
+	cppcheck-suppress \
 	qa/libcmis/data
 
 if ENABLE_CPPCHECK
-TESTS_ENVIRONMENT = $(SHELL)
+LOG_COMPILER = $(SHELL)
 TESTS = cppcheck-test.sh
 endif
 
-distclean-local:
-	-rm -rf test-server
-	-rm chemistry-opencmis-*.tar.gz
-	-rm jetty-*.tar.gz
 
 DISTCLEANFILES = \
 	cmis-client.1 \
 	libcmis-@LIBCMIS_API_VERSION@.pc \
 	libcmis-c-@LIBCMIS_API_VERSION@.pc
-
-DISTCHECK_CONFIGURE_FLAGS = "--disable-long-tests"
 
 dist-hook:
 	@if test -d "$(srcdir)/.git"; \

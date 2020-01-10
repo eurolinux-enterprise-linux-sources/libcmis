@@ -33,6 +33,8 @@ libcmis_la_SOURCES = \
 	allowable-actions.cxx \
 	document.cxx \
 	folder.cxx \
+	http-session.hxx \
+	http-session.cxx \
 	oauth2-data.cxx \
 	object.cxx \
 	object-type.cxx \
@@ -93,6 +95,40 @@ libcmis_la_SOURCES = \
 	gdrive-session.cxx \
 	gdrive-utils.hxx \
 	gdrive-utils.cxx \
+	onedrive-allowable-actions.hxx \
+	onedrive-document.hxx \
+	onedrive-document.cxx \
+	onedrive-folder.hxx \
+	onedrive-folder.cxx \
+	onedrive-object.hxx \
+	onedrive-object.cxx \
+	onedrive-object-type.hxx \
+	onedrive-object-type.cxx \
+	onedrive-property.hxx \
+	onedrive-property.cxx \
+	onedrive-repository.hxx \
+	onedrive-repository.cxx \
+	onedrive-session.hxx \
+	onedrive-session.cxx \
+	onedrive-utils.hxx \
+	onedrive-utils.cxx \
+	sharepoint-allowable-actions.hxx \
+	sharepoint-document.hxx \
+	sharepoint-document.cxx \
+	sharepoint-folder.hxx \
+	sharepoint-folder.cxx \
+	sharepoint-object.hxx \
+	sharepoint-object.cxx \
+	sharepoint-object-type.hxx \
+	sharepoint-object-type.cxx \
+	sharepoint-property.hxx \
+	sharepoint-property.cxx \
+	sharepoint-repository.hxx \
+	sharepoint-repository.cxx \
+	sharepoint-session.hxx \
+	sharepoint-session.cxx \
+	sharepoint-utils.hxx \
+	sharepoint-utils.cxx \
 	json-utils.hxx \
 	json-utils.cxx \
 	oauth2-handler.hxx \
@@ -101,13 +137,14 @@ libcmis_la_SOURCES = \
 	oauth2-providers.hxx \
 	oauth2-providers.cxx
 
-libcmis_@LIBCMIS_API_VERSION@_la_LDFLAGS = -export-dynamic -no-undefined -version-info 4:1:0
+libcmis_@LIBCMIS_API_VERSION@_la_LDFLAGS = -export-dynamic -no-undefined -version-info 5:0:0
 
 libcmis_@LIBCMIS_API_VERSION@_la_LIBADD = \
 	libcmis.la \
 	$(XML2_LIBS) \
 	$(CURL_LIBS) \
 	$(BOOST_SMART_PTR_LIBS) \
+	$(BOOST_DATE_TIME_LDFLAGS) \
 	$(BOOST_DATE_TIME_LIBS)
 
 libcmis_@LIBCMIS_API_VERSION@_la_includedir = $(includedir)/libcmis-@LIBCMIS_API_VERSION@/libcmis

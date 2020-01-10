@@ -40,7 +40,8 @@ class CurlHandle
         CurlHandle( );
         CurlHandle( const CurlHandle& copy );
         CurlHandle& operator=( const CurlHandle& copy );
-        
+        ~CurlHandle( );
+
         std::string m_url;
 
         write_callback m_writeFn;
@@ -66,8 +67,9 @@ class CurlHandle
 
         long m_httpError;
         std::string m_method;
-       
-        void reset( ); 
+        std::vector< std::string > m_headers;
+
+        void reset( );
 };
 
 namespace mockup
@@ -87,22 +89,26 @@ namespace mockup
     class Request
     {
         public:
-            Request( std::string url, std::string method, std::string body );
+            Request( std::string url, std::string method, std::string body,
+                     std::vector< std::string > headers );
 
             std::string m_url;
             std::string m_method;
             std::string m_body;
+            std::vector< std::string > m_headers;
     };
 
     class RequestMatcher
     {
         public:
-            RequestMatcher( std::string baseUrl, std::string matchParam, std::string method );
+            RequestMatcher( std::string baseUrl, std::string matchParam,
+                            std::string method, std::string matchBody );
             bool operator< ( const RequestMatcher& compare ) const;
 
             std::string m_baseUrl;
             std::string m_matchParam;
             std::string m_method;
+            std::string m_matchBody;
     };
 
     class Configuration

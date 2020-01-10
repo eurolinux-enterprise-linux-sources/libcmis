@@ -35,6 +35,7 @@
 #include <string>
 
 #include <boost/program_options.hpp>
+#include <boost/scoped_ptr.hpp>
 
 #include <libcmis/libcmis.hxx>
 
@@ -52,6 +53,27 @@ namespace
         cin >> code;
 
         return strdup( code.c_str() );
+    }
+
+    class AuthCodeProvider
+    {
+        private:
+            static string m_authCode;
+
+        public:
+            static void setAuthCode( string authCode );
+            static char* getAuthCode( const char* /*url*/, const char* /*username*/, const char* /*password*/ );
+    };
+
+    string AuthCodeProvider::m_authCode = string( );
+    void AuthCodeProvider::setAuthCode( string authCode )
+    {
+        m_authCode = authCode;
+    }
+    
+    char* AuthCodeProvider::getAuthCode( const char* /*url*/, const char* /*username*/, const char* /*password*/ ) 
+    {
+        return strdup( m_authCode.c_str( ) );
     }
 
     class CinAuthProvider : public libcmis::AuthProvider
@@ -301,6 +323,8 @@ libcmis::Session* CmisClient::getSession( bool inGetRepositories ) throw ( Comma
             oauth2RedirectUri = m_vm["oauth2-redirect-uri"].as< string >();
         if ( m_vm.count( "oauth2-scope" ) > 0 )
             oauth2Scope = m_vm["oauth2-scope"].as< string >();
+        if ( m_vm.count( "oauth2-auth-code" ) > 0 )
+            AuthCodeProvider::setAuthCode( m_vm["oauth2-auth-code"].as< string >() );
 
         libcmis::OAuth2DataPtr oauth2Data( new libcmis::OAuth2Data( oauth2AuthUrl, oauth2TokenUrl,
                     oauth2Scope, oauth2RedirectUri, oauth2ClientId, oauth2ClientSecret) );
@@ -308,7 +332,14 @@ libcmis::Session* CmisClient::getSession( bool inGetRepositories ) throw ( Comma
         if ( oauth2Data->isComplete( ) )
         {
             // Set the fallback AuthCode provider
-            libcmis::SessionFactory::setOAuth2AuthCodeProvider( lcl_queryAuthCode );
+            if ( m_vm.count( "oauth2-auth-code" ) > 0 )
+            {
+                libcmis::SessionFactory::setOAuth2AuthCodeProvider( AuthCodeProvider::getAuthCode );
+            }
+            else
+            {
+                libcmis::SessionFactory::setOAuth2AuthCodeProvider( lcl_queryAuthCode );
+            }
         }
         else
         {
@@ -350,7 +381,7 @@ void CmisClient::execute( ) throw ( exception )
         }
         else if ( "show-root" == command )
         {
-            libcmis::Session* session = getSession( );
+            boost::scoped_ptr<libcmis::Session> session( getSession( ) );
 
             libcmis::FolderPtr root = session->getRootFolder();
             if ( root.get() )
@@ -358,12 +389,10 @@ void CmisClient::execute( ) throw ( exception )
                 cout << "------------------------------------------------" << endl;
                 cout << root->toString() << endl;
             }
-
-            delete session;
         }
         else if ( "repo-infos" == command )
         {
-            libcmis::Session* session = getSession( );
+            boost::scoped_ptr<libcmis::Session> session( getSession( ) );
             libcmis::RepositoryPtr repo = session->getRepository( );
 
             if ( repo )
@@ -373,12 +402,10 @@ void CmisClient::execute( ) throw ( exception )
             }
             else
                 throw CommandException( "Please select a repository" );
-
-            delete session;
         }
         else if ( "type-by-id" == command )
         {
-            libcmis::Session* session = getSession( );
+            boost::scoped_ptr<libcmis::Session> session( getSession( ) );
 
             // Get the ids of the types to fetch
             if ( m_vm.count( "args" ) == 0 )
@@ -400,12 +427,10 @@ void CmisClient::execute( ) throw ( exception )
                     cout << e.what() << endl;
                 }
             }
-
-            delete session;
         }
         else if ( "show-by-id" == command )
         {
-            libcmis::Session* session = getSession( );
+            boost::scoped_ptr<libcmis::Session> session( getSession( ) );
 
             // Get the ids of the objects to fetch
             if ( m_vm.count( "args" ) == 0 )
@@ -423,12 +448,10 @@ void CmisClient::execute( ) throw ( exception )
                 else
                     cout << "No such node: " << *it << endl;
             }
-
-            delete session;
         }
         else if ( "show-by-path" == command )
         {
-            libcmis::Session* session = getSession( );
+            boost::scoped_ptr<libcmis::Session> session( getSession( ) );
 
             // Get the paths of the objects to fetch
             if ( m_vm.count( "args" ) == 0 )
@@ -446,12 +469,10 @@ void CmisClient::execute( ) throw ( exception )
                 else
                     cout << "No such node: " << *it << endl;
             }
-
-            delete session;
         }
         else if ( "get-content" == command )
         {
-            libcmis::Session* session = getSession( );
+            boost::scoped_ptr<libcmis::Session> session( getSession( ) );
 
             vector< string > objIds = m_vm["args"].as< vector< string > >( );
             if ( objIds.empty( ) )
@@ -473,12 +494,10 @@ void CmisClient::execute( ) throw ( exception )
             }
             else
                 throw CommandException( string( "Not a document object id: " ) + objIds.front() );
-
-            delete session;
         }
         else if ( "set-content" == command )
         {
-            libcmis::Session* session = getSession( );
+            boost::scoped_ptr<libcmis::Session> session( getSession( ) );
 
             vector< string > objIds = m_vm["args"].as< vector< string > >( );
             if ( objIds.empty( ) )
@@ -509,12 +528,10 @@ void CmisClient::execute( ) throw ( exception )
             }
             else
                 throw CommandException( string( "Not a document object id: " ) + objIds.front() );
-
-            delete session;
         }
         else if ( "create-folder" == command )
         {
-            libcmis::Session* session = getSession( );
+            boost::scoped_ptr<libcmis::Session> session( getSession( ) );
 
             vector< string > args = m_vm["args"].as< vector< string > >( );
             if ( args.size() < 2 )
@@ -539,7 +556,12 @@ void CmisClient::execute( ) throw ( exception )
             if ( typeIt == propertiesTypes.end( ) )
                 throw CommandException( string( "No cmis:name on the object type... weird" ) );
             vector< string > nameValues;
-            nameValues.push_back( args[1] );
+            string newFolderName = args[1];
+            for ( unsigned int i = 2; i < args.size( ); i++ )
+            {
+                newFolderName += " " + args[i];
+            }
+            nameValues.push_back( newFolderName );
             libcmis::PropertyPtr nameProperty( new libcmis::Property( typeIt->second, nameValues ) );
             properties.insert( pair< string, libcmis::PropertyPtr >( string( "cmis:name" ), nameProperty ) );
             
@@ -571,12 +593,10 @@ void CmisClient::execute( ) throw ( exception )
 
             cout << "------------------------------------------------" << endl;
             cout << created->toString() << endl;
-
-            delete session;
         }
         else if ( "create-document" == command )
         {
-            libcmis::Session* session = getSession( );
+            boost::scoped_ptr<libcmis::Session> session( getSession( ) );
 
             vector< string > args = m_vm["args"].as< vector< string > >( );
             if ( args.size() < 2 )
@@ -601,7 +621,12 @@ void CmisClient::execute( ) throw ( exception )
             if ( typeIt == propertiesTypes.end( ) )
                 throw CommandException( string( "No cmis:name on the object type... weird" ) );
             vector< string > nameValues;
-            nameValues.push_back( args[1] );
+            string newDocumentName = args[1];
+            for ( unsigned int i = 2; i < args.size( ); i++ )
+            {
+                newDocumentName += " " + args[i];
+            }
+            nameValues.push_back( newDocumentName );
             libcmis::PropertyPtr nameProperty( new libcmis::Property( typeIt->second, nameValues ) );
             properties.insert( pair< string, libcmis::PropertyPtr >( string( "cmis:name" ), nameProperty ) );
             
@@ -663,12 +688,10 @@ void CmisClient::execute( ) throw ( exception )
 
             cout << "------------------------------------------------" << endl;
             cout << created->toString() << endl;
-
-            delete session;
         }
         else if ( "update-object" == command )
         {
-            libcmis::Session* session = getSession( );
+            boost::scoped_ptr<libcmis::Session> session( getSession( ) );
 
             vector< string > args = m_vm["args"].as< vector< string > >( );
             if ( args.size() != 1 )
@@ -700,12 +723,10 @@ void CmisClient::execute( ) throw ( exception )
             cout << "------------------------------------------------" << endl;
             // Output updated instead of object as it may be different depending on the server
             cout << updated->toString() << endl;
-
-            delete session;
         }
         else if ( "move-object" == command )
         {
-            libcmis::Session* session = getSession( );
+            boost::scoped_ptr<libcmis::Session> session( getSession( ) );
 
             vector< string > args = m_vm["args"].as< vector< string > > ( );
             if ( args.size() != 3 )
@@ -714,35 +735,26 @@ void CmisClient::execute( ) throw ( exception )
             string& srcId = args[1];
             string& dstId = args[2];
 
-            try
-            {
-                libcmis::ObjectPtr obj = session->getObject( objId );
+            libcmis::ObjectPtr obj = session->getObject( objId );
 
-                libcmis::ObjectPtr src = session->getObject( srcId );
-                libcmis::FolderPtr srcFolder = boost::dynamic_pointer_cast< libcmis::Folder > ( src );
-                if ( !srcFolder )
-                    throw CommandException( "Source object is not a folder" );
+            libcmis::ObjectPtr src = session->getObject( srcId );
+            libcmis::FolderPtr srcFolder = boost::dynamic_pointer_cast< libcmis::Folder > ( src );
+            if ( !srcFolder )
+                throw CommandException( "Source object is not a folder" );
 
-                libcmis::ObjectPtr dst = session->getObject( dstId );
-                libcmis::FolderPtr dstFolder = boost::dynamic_pointer_cast< libcmis::Folder > ( dst );
-                if ( !dstFolder )
-                    throw CommandException( "Destinaton object is not a folder" );
+            libcmis::ObjectPtr dst = session->getObject( dstId );
+            libcmis::FolderPtr dstFolder = boost::dynamic_pointer_cast< libcmis::Folder > ( dst );
+            if ( !dstFolder )
+                throw CommandException( "Destinaton object is not a folder" );
 
-                obj->move( srcFolder, dstFolder );
+            obj->move( srcFolder, dstFolder );
 
-                cout << "------------------------------------------------" << endl;
-                cout << obj->toString( ) << endl;
-            }
-            catch ( const std::exception& e )
-            {
-                delete session;
-                throw;
-            }
-            delete session;
+            cout << "------------------------------------------------" << endl;
+            cout << obj->toString( ) << endl;
         }
         else if ( "delete" == command )
         {
-            libcmis::Session* session = getSession( );
+            boost::scoped_ptr<libcmis::Session> session( getSession( ) );
 
             // Get the ids of the objects to fetch
             if ( m_vm.count( "args" ) == 0 )
@@ -811,12 +823,10 @@ void CmisClient::execute( ) throw ( exception )
             {
                 cout << "All nodes have been removed" << endl;
             }
-
-            delete session;
         }
         else if ( "checkout" == command )
         {
-            libcmis::Session* session = getSession( );
+            boost::scoped_ptr<libcmis::Session> session( getSession( ) );
 
             // Get the ids of the objects to fetch
             if ( m_vm.count( "args" ) == 0 )
@@ -844,12 +854,10 @@ void CmisClient::execute( ) throw ( exception )
             }
             else
                 cout << "No such node: " << objIds.front() << endl;
-
-            delete session;
         }
         else if ( "cancel-checkout" == command )
         {
-            libcmis::Session* session = getSession( );
+            boost::scoped_ptr<libcmis::Session> session( getSession( ) );
 
             // Get the ids of the objects to fetch
             if ( m_vm.count( "args" ) == 0 )
@@ -872,12 +880,10 @@ void CmisClient::execute( ) throw ( exception )
             }
             else
                 cout << "No such node: " << objIds.front() << endl;
-
-            delete session;
         }
         else if ( "checkin" == command )
         {
-            libcmis::Session* session = getSession( );
+            boost::scoped_ptr<libcmis::Session> session( getSession( ) );
 
             // Get the ids of the objects to fetch
             if ( m_vm.count( "args" ) == 0 )
@@ -955,12 +961,10 @@ void CmisClient::execute( ) throw ( exception )
             }
             else
                 cout << "No such node: " << objIds.front() << endl;
-
-            delete session;
         }
         else if ( "get-versions" == command )
         {
-            libcmis::Session* session = getSession( );
+            boost::scoped_ptr<libcmis::Session> session( getSession( ) );
 
             // Get the ids of the objects to fetch
             if ( m_vm.count( "args" ) == 0 )
@@ -988,8 +992,6 @@ void CmisClient::execute( ) throw ( exception )
             }
             else
                 cout << "No such node: " << objIds.front() << endl;
-
-            delete session;
         }
         else if ( "help" == command )
         {
@@ -1030,6 +1032,7 @@ options_description CmisClient::getOptionsDescription( )
         ( "oauth2-token-url", value< string >(), "URL to convert code to tokens in the OAuth2 flow" )
         ( "oauth2-redirect-uri", value< string >(), "redirect URI indicating that the authentication is finished in OAuth2 flow" )
         ( "oauth2-scope", value< string >(), "The authentication scope in OAuth2" )
+        ( "oauth2-auth-code", value< string >(), "The authentication code required to get the access token" )
     ;
 
     options_description setcontentOpts( "modification operations options" );

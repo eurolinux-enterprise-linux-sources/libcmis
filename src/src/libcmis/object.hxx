@@ -89,7 +89,7 @@ namespace libcmis
 
                 Note that folders will have only path, documents may have
                 several ones and there may be cases where there is no path
-                at all (unfiled objects);
+                at all (unfilled objects);
               */
             virtual std::vector< std::string > getPaths( );
 
@@ -104,6 +104,59 @@ namespace libcmis
             virtual std::string getChangeToken( );
             virtual bool isImmutable( );
 
+            virtual std::vector< std::string > getSecondaryTypes();
+
+            /** Convenience function adding a secondary type to the object.
+
+                Behind the scene this function is basically computing the
+                properties and sets them for you to avoid reading the CMIS
+                1.1 specification, section 2.1.9.
+
+                \param id
+                    the identifier of the secondary type to add
+                \param properties
+                    the properties coming with the secondary type
+
+                \return
+                    the updated object. Note that it may represent the same
+                    object on the server but it still is a different object
+                    instance (see updateProperties method).
+
+                \throw Exception
+                    if anything wrong happens. Note that the server is likely
+                    to throw a constraint exception if it doesn't allow the
+                    operation.
+              */
+            virtual boost::shared_ptr< Object > addSecondaryType(
+                                                        std::string id,
+                                                        PropertyPtrMap properties )
+                throw ( Exception );
+
+            /** Convenience function removing a secondary type from the object.
+
+                Behind the scene this function is basically computing the
+                correct property and sets it for you to avoid reading the
+                CMIS 1.1 specification, section 2.1.9.
+
+                The server should remove the related properties, there is
+                normally no need to worry about them.
+
+                \param id
+                    the identifier of the secondary type to remove
+
+                \return
+                    the updated object. Note that it may represent the same
+                    object on the server but it still is a different object
+                    instance (see updateProperties method).
+
+                \throw Exception
+                    if anything wrong happens. Note that the server is likely
+                    to throw a constraint exception if it doesn't allow the
+                    operation.
+              */
+            virtual boost::shared_ptr< Object > removeSecondaryType( std::string id )
+                throw ( Exception );
+
             /** Gives access to the properties of the object.
 
                 \attention
@@ -115,14 +168,14 @@ namespace libcmis
                 \sa updateProperties to change properties on the server
               */
             virtual libcmis::PropertyPtrMap& getProperties( );
-            
-            
+
+
             /** Get the renditions of the object.
 
                 \param filter is defined by the CMIS spec section 2.2.1.2.4.1.
-                              By default, this value is just ignored, but some bindings and servers 
+                              By default, this value is just ignored, but some bindings and servers
                               may use it.
-    
+
                 \attention
                     The streamId of the rendition is used in getContentStream( )
               */
@@ -133,9 +186,9 @@ namespace libcmis
             /** Update the object properties and return the updated object.
 
                 \attention
-                    even if the returned object may have the same Id than 'this' and thus
-                    representing the same object on the server, those are still two different
-                    instances to ease memory handling.
+                    even if the returned object may have the same Id than 'this'
+                    and thus representing the same object on the server, those
+                    are still two different instances to ease memory handling.
               */
             virtual boost::shared_ptr< Object > updateProperties(
                         const PropertyPtrMap& properties ) throw ( Exception ) = 0;
