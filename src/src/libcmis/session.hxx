@@ -28,6 +28,7 @@
 #ifndef _SESSION_HXX_
 #define _SESSION_HXX_
 
+#include <vector>
 #include <string>
 #include <boost/shared_ptr.hpp>
 
@@ -38,19 +39,6 @@
 
 namespace libcmis
 {
-    class AuthProvider 
-    {
-        public:
-            virtual ~AuthProvider() { };
-
-            /** The function implementing it needs to fill the username and password parameters
-                and return true. Returning false means that the user cancelled the authentication
-                and will fail the query.
-              */
-            virtual bool authenticationQuery( std::string& username, std::string& password ) = 0;
-    };
-    typedef ::boost::shared_ptr< AuthProvider > AuthProviderPtr;
-
     class Session
     {
         public:
@@ -60,6 +48,16 @@ namespace libcmis
             /** Get the current repository.
               */
             virtual RepositoryPtr getRepository( ) throw ( Exception ) = 0;
+
+            virtual std::vector< RepositoryPtr > getRepositories( ) = 0;
+
+            /** Change the current repository.
+
+                \return
+                    false if no repository with the provided id can be found on the server,
+                    true otherwise
+              */
+            virtual bool setRepository( std::string repositoryId ) = 0;
 
             /** Get the Root folder of the repository
               */
@@ -81,9 +79,17 @@ namespace libcmis
               */
             virtual ObjectTypePtr getType( std::string id ) throw ( Exception ) = 0;
 
-            /** Set an authentication provider for providing authentication interactively.
+            /** Enable or disable the SSL certificate verification.
+
+                By default, SSL certificates are verified and errors are thrown in case of
+                one is invalid. The user may decide to ignore the checks for this CMIS session
+                to workaround self-signed certificates or other similar problems.
+
+                As each session only handles the connection to one CMIS server, it should
+                concern only one SSL certificate and should provide the same feature as the
+                certificate exception feature available on common web browser.
               */
-            virtual void setAuthenticationProvider( AuthProviderPtr provider ) = 0;
+            virtual void setNoSSLCertificateCheck( bool noCheck ) = 0;
     };
 }
 

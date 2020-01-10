@@ -1,0 +1,68 @@
+From 1f48b994ac987c20f8da2e4fa9ec0399877655c7 Mon Sep 17 00:00:00 2001
+From: David Tardon <dtardon@redhat.com>
+Date: Thu, 4 Sep 2014 16:48:00 +0200
+Subject: [PATCH] coverity: return const string&
+
+Otherwise the use in the C wrapper functions is invalid, as the
+functions return char* from a string object that is destroyed in the
+function scope.
+---
+ src/libcmis/oauth2-data.hxx | 12 ++++++------
+ src/libcmis/rendition.hxx   | 12 ++++++------
+ 2 files changed, 12 insertions(+), 12 deletions(-)
+
+diff --git a/src/libcmis/oauth2-data.hxx b/src/libcmis/oauth2-data.hxx
+index aa99e2c..000f939 100644
+--- a/src/libcmis/oauth2-data.hxx
++++ b/src/libcmis/oauth2-data.hxx
+@@ -62,12 +62,12 @@ namespace libcmis
+ 
+             bool isComplete();
+ 
+-            std::string getAuthUrl() { return m_authUrl; }
+-            std::string getTokenUrl() { return m_tokenUrl; }
+-            std::string getClientId() { return m_clientId; }
+-            std::string getClientSecret() { return m_clientSecret; }
+-            std::string getScope() { return m_scope; }
+-            std::string getRedirectUri() { return m_redirectUri; }
++            const std::string& getAuthUrl() { return m_authUrl; }
++            const std::string& getTokenUrl() { return m_tokenUrl; }
++            const std::string& getClientId() { return m_clientId; }
++            const std::string& getClientSecret() { return m_clientSecret; }
++            const std::string& getScope() { return m_scope; }
++            const std::string& getRedirectUri() { return m_redirectUri; }
+     };
+     typedef ::boost::shared_ptr< OAuth2Data > OAuth2DataPtr;
+ }
+diff --git a/src/libcmis/rendition.hxx b/src/libcmis/rendition.hxx
+index 820b58d..c58b7ac 100644
+--- a/src/libcmis/rendition.hxx
++++ b/src/libcmis/rendition.hxx
+@@ -65,18 +65,18 @@ namespace libcmis
+             
+             bool isThumbnail( ) { return m_kind == "cmis:thumbnail"; }
+ 
+-            std::string getStreamId( ) const { return m_streamId; }
+-            std::string getMimeType( ) const { return m_mimeType; }
+-            std::string getKind( ) const { return m_kind; }
+-            std::string getUrl( ) const { return m_href; }
+-            std::string getTitle( ) const { return m_title; }
++            const std::string& getStreamId( ) const { return m_streamId; }
++            const std::string& getMimeType( ) const { return m_mimeType; }
++            const std::string& getKind( ) const { return m_kind; }
++            const std::string& getUrl( ) const { return m_href; }
++            const std::string& getTitle( ) const { return m_title; }
+ 
+             /** Provides the stream length in bytes or a negative value if missing.
+               */
+             long getLength( ) const { return m_length; }
+             long getWidth( ) const { return m_width; }
+             long getHeight( ) const { return m_height; }
+-            std::string getRenditionDocumentId( ) { return m_renditionDocumentId; }
++            const std::string& getRenditionDocumentId( ) { return m_renditionDocumentId; }
+ 
+             std::string toString( );
+     };
+-- 
+1.9.3
+

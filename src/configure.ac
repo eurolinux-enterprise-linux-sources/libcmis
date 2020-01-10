@@ -2,7 +2,7 @@
 # Process this file with autoconf to produce a configure script.
 
 m4_define([libcmis_major_version], [0])
-m4_define([libcmis_minor_version], [3])
+m4_define([libcmis_minor_version], [4])
 m4_define([libcmis_micro_version], [1])
 m4_define([libcmis_api_version], [libcmis_major_version.libcmis_minor_version])
 m4_define([libcmis_version],[libcmis_api_version.libcmis_micro_version])
@@ -10,7 +10,7 @@ m4_define([libcmis_version],[libcmis_api_version.libcmis_micro_version])
 
 AC_PREREQ([2.63])
 AC_INIT([libcmis], [libcmis_version])
-AM_INIT_AUTOMAKE
+AM_INIT_AUTOMAKE(serial-tests)
 m4_ifdef([AM_SILENT_RULES],[AM_SILENT_RULES([yes])])
 
 AC_ARG_ENABLE(client,
@@ -34,6 +34,7 @@ AS_IF([test "x$enable_tests" != "xno"], [
 ], [enable_long_tests=no])
 AM_CONDITIONAL(ENABLE_LONG_TESTS, test "x$enable_long_tests" != "xno")
 
+
 LIBCMIS_API_VERSION=libcmis_api_version
 AC_SUBST(LIBCMIS_API_VERSION)
 
@@ -42,6 +43,9 @@ AC_CONFIG_MACRO_DIR([m4])
 for top_builddir in . .. ../.. $ac_auxdir $ac_auxdir/..; do
 	test -f $top_builddir/configure && break
 done
+
+SRCDIR=$srcdir
+AC_SUBST(SRCDIR)
 
 AC_LANG([C++])
 
@@ -53,7 +57,16 @@ AC_PROG_INSTALL
 AC_PROG_LN_S
 AC_PROG_MAKE_SET
 AC_PROG_LIBTOOL
-AC_LIBTOOL_WIN32_DLL
+LT_INIT([win32-dll disable-static pic-only])
+AC_CANONICAL_HOST
+
+# ==========================
+# Platform check for windows
+# ==========================
+AC_MSG_CHECKING([for native Win32])
+AS_CASE([$host], [*-*-mingw*], [native_win32=yes], [native_win32=no])
+AC_MSG_RESULT([$native_win32])
+AM_CONDITIONAL(OS_WIN32, [test "x$native_win32" = "xyes"])
 
 # TODO Check for docbook-to-man
 # =============
@@ -67,17 +80,28 @@ AC_ARG_WITH(man,
 AS_IF([test "x$with_man" != "xno"], [
 	build_man=yes
         AS_IF([test -z "$DOCBOOK2MAN"], [
-            AC_PATH_PROG(DOCBOOK2MAN,[docbook-to-man])
+            AC_PATH_PROG(DOCBOOK2MAN,[docbook2x-man])
             AS_IF([test -z "$DOCBOOK2MAN"], [
-                    AC_PATH_PROG(DOCBOOK2MAN,[docbook2man.pl])
-                    AS_IF([test -z "$DOCBOOK2MAN"], [
-                            AC_MSG_ERROR([docbook-to-man is missing. Install docbook2X package.])
-                    ])
+                AC_PATH_PROG(DOCBOOK2MAN,[docbook-to-man])
+                AS_IF([test -z "$DOCBOOK2MAN"], [
+                        AC_PATH_PROG(DOCBOOK2MAN,[docbook2man.pl])
+                        AS_IF([test -z "$DOCBOOK2MAN"], [
+                                AC_MSG_ERROR([docbook-to-man is missing. Install docbook2X package.])
+                        ])
+                ])
             ])
         ])
 ], [build_man=no])
 AC_SUBST(DOCBOOK2MAN)
 AM_CONDITIONAL([WITH_LIBCMIS_MAN], [test "x$build_man" != "xno"])
+
+# ========
+# Cppcheck
+# ========
+AC_PATH_PROG(CPPCHECK,[cppcheck],[])
+AS_IF([test "x$ac_cv_path_CPPCHECK" != "x"], [enable_cppcheck=yes], [enable_cppcheck=no])
+AM_CONDITIONAL(ENABLE_CPPCHECK, [test "x$ac_cv_path_CPPCHECK" != "x"])
+AC_SUBST(CPPCHECK)
 
 AC_ARG_ENABLE([werror],
 	[AS_HELP_STRING([--disable-werror], [Treat all warnings as errors, usefull for development])],
@@ -143,9 +167,14 @@ AC_CONFIG_FILES([
 	libcmis.pc
 	libcmis-c.pc
     run-test.sh
+    cppcheck-test.sh
 	src/Makefile
 	src/libcmis/Makefile
 	src/libcmis-c/Makefile
+    qa/Makefile
+    qa/mockup/Makefile
+    qa/libcmis/Makefile
+    qa/libcmis-c/Makefile
 ])
 AC_OUTPUT
 
@@ -158,5 +187,6 @@ libcmis $VERSION:
               werror: ${enable_werror}
                tests: ${enable_tests}
           long tests: ${enable_long_tests}
+      cppcheck tests: ${enable_cppcheck}
                 mans: ${build_man}
 ])

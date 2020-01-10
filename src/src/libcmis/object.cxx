@@ -40,7 +40,8 @@ namespace libcmis
         m_refreshTimestamp( 0 ),
         m_typeId( ),
         m_properties( ),
-        m_allowableActions( )
+        m_allowableActions( ),
+        m_renditions( )
     {
     }
 
@@ -50,7 +51,8 @@ namespace libcmis
         m_refreshTimestamp( 0 ),
         m_typeId( ),
         m_properties( ),
-        m_allowableActions( )
+        m_allowableActions( ),
+        m_renditions( )
     {
         initializeFromNode( node );
     }
@@ -61,7 +63,8 @@ namespace libcmis
         m_refreshTimestamp( copy.m_refreshTimestamp ),
         m_typeId( copy.m_typeId ),
         m_properties( copy.m_properties ),
-        m_allowableActions( copy.m_allowableActions )
+        m_allowableActions( copy.m_allowableActions ),
+        m_renditions( copy.m_renditions )
     {
     }
 
@@ -75,6 +78,7 @@ namespace libcmis
             m_typeId = copy.m_typeId;
             m_properties = copy.m_properties;
             m_allowableActions = copy.m_allowableActions;
+            m_renditions = copy.m_renditions;
         }
 
         return *this;
@@ -118,6 +122,16 @@ namespace libcmis
                 }
             }
             xmlXPathFreeObject( xpathObj );
+
+            // Get the renditions 
+            xpathObj = xmlXPathEvalExpression( BAD_CAST( "//cmis:rendition" ), xpathCtx );
+            if ( xpathObj && xpathObj->nodesetval && xpathObj->nodesetval->nodeNr > 0 )
+            {
+                xmlNodePtr renditionNode = xpathObj->nodesetval->nodeTab[0];
+                libcmis::RenditionPtr rendition( new libcmis::Rendition( renditionNode ) );
+                m_renditions.push_back( rendition );
+            }
+            xmlXPathFreeObject( xpathObj );
         }
 
         xmlXPathFreeContext( xpathCtx );
@@ -126,45 +140,33 @@ namespace libcmis
         m_refreshTimestamp = time( NULL );
     } 
 
+    string Object::getStringProperty( const string& propertyName )
+    {
+       string name;
+       PropertyPtrMap::const_iterator it = getProperties( ).find( string( propertyName ) );
+       if ( it != getProperties( ).end( ) && it->second != NULL && !it->second->getStrings( ).empty( ) )
+           name = it->second->getStrings( ).front( );
+       return name;
+    }
+
     string Object::getId( )
     {
-        string name;
-        map< string, libcmis::PropertyPtr >::const_iterator it = getProperties( ).find( string( "cmis:objectId" ) );
-        if ( it != getProperties( ).end( ) && it->second != NULL && !it->second->getStrings( ).empty( ) )
-            name = it->second->getStrings( ).front( );
-        return name;
+        return getStringProperty( "cmis:objectId" );
     }
 
     string Object::getName( )
     {
-        string name;
-        map< string, libcmis::PropertyPtr >::const_iterator it = getProperties( ).find( string( "cmis:name" ) );
-        if ( it != getProperties( ).end( ) && it->second != NULL && !it->second->getStrings( ).empty( ) )
-            name = it->second->getStrings( ).front( );
-        return name;
-    }
-
-    vector< string > Object::getPaths( )
-    {
-        return vector< string > ( );
+        return getStringProperty( "cmis:name" );
     }
 
     string Object::getBaseType( )
     {
-        string value;
-        map< string, libcmis::PropertyPtr >::const_iterator it = getProperties( ).find( string( "cmis:baseTypeId" ) );
-        if ( it != getProperties( ).end( ) && it->second != NULL && !it->second->getStrings( ).empty( ) )
-            value = it->second->getStrings( ).front( );
-        return value;
+        return getStringProperty( "cmis:baseTypeId" );
     }
 
     string Object::getType( )
     {
-        string value;
-        map< string, libcmis::PropertyPtr >::const_iterator it = getProperties( ).find( string( "cmis:objectTypeId" ) );
-        if ( it != getProperties( ).end( ) && it->second != NULL && !it->second->getStrings( ).empty( ) )
-            value = it->second->getStrings( ).front( );
-
+        string value = getStringProperty( "cmis:objectTypeId" );
         if ( value.empty( ) )
             value = m_typeId;
         return value;
@@ -172,35 +174,37 @@ namespace libcmis
 
     string Object::getCreatedBy( )
     {
-        string value;
-        map< string, libcmis::PropertyPtr >::const_iterator it = getProperties( ).find( string( "cmis:createdBy" ) );
-        if ( it != getProperties( ).end( ) && it->second != NULL && !it->second->getStrings( ).empty( ) )
-            value = it->second->getStrings( ).front( );
-        return value;
+        return getStringProperty( "cmis:createdBy" );
+    }    
+
+    string Object::getLastModifiedBy( )
+    {
+        return getStringProperty( "cmis:lastModifiedBy" );
+    }
+
+    string Object::getChangeToken( )
+    {
+        return getStringProperty( "cmis:changeToken" );
+    }
+
+    vector< string > Object::getPaths( )
+    {
+        return vector< string > ( );
     }
 
     boost::posix_time::ptime Object::getCreationDate( )
     {
         boost::posix_time::ptime value;
-        map< string, libcmis::PropertyPtr >::const_iterator it = getProperties( ).find( string( "cmis:creationDate" ) );
+        PropertyPtrMap::const_iterator it = getProperties( ).find( string( "cmis:creationDate" ) );
         if ( it != getProperties( ).end( ) && it->second != NULL && !it->second->getDateTimes( ).empty( ) )
             value = it->second->getDateTimes( ).front( );
         return value;
-    }
-
-    string Object::getLastModifiedBy( )
-    {
-        string value;
-        map< string, libcmis::PropertyPtr >::const_iterator it = getProperties( ).find( string( "cmis:lastModifiedBy" ) );
-        if ( it != getProperties( ).end( ) && it->second != NULL && !it->second->getStrings( ).empty( ) )
-            value = it->second->getStrings( ).front( );
-        return value;
-    }
+    } 
 
     boost::posix_time::ptime Object::getLastModificationDate( )
     {
         boost::posix_time::ptime value;
-        map< string, libcmis::PropertyPtr >::const_iterator it = getProperties( ).find( string( "cmis:lastModificationDate" ) );
+        PropertyPtrMap::const_iterator it = getProperties( ).find( string( "cmis:lastModificationDate" ) );
         if ( it != getProperties( ).end( ) && it->second != NULL && !it->second->getDateTimes( ).empty( ) )
             value = it->second->getDateTimes( ).front( );
         return value;
@@ -209,22 +213,13 @@ namespace libcmis
     bool Object::isImmutable( )
     {
         bool value = false;
-        map< string, libcmis::PropertyPtr >::const_iterator it = getProperties( ).find( string( "cmis:isImmutable" ) );
+        PropertyPtrMap::const_iterator it = getProperties( ).find( string( "cmis:isImmutable" ) );
         if ( it != getProperties( ).end( ) && it->second != NULL && !it->second->getBools( ).empty( ) )
             value = it->second->getBools( ).front( );
         return value;
     }
 
-    string Object::getChangeToken( )
-    {
-        string value;
-        map< string, libcmis::PropertyPtr >::const_iterator it = getProperties( ).find( string( "cmis:changeToken" ) );
-        if ( it != getProperties( ).end( ) && it->second != NULL && !it->second->getStrings( ).empty( ) )
-            value = it->second->getStrings( ).front( );
-        return value;
-    }
-
-    map< string, libcmis::PropertyPtr >& Object::getProperties( )
+    PropertyPtrMap& Object::getProperties( )
     {
         return m_properties;
     }
@@ -235,6 +230,25 @@ namespace libcmis
             m_typeDescription = m_session->getType( getType( ) );
 
         return m_typeDescription;
+    }
+
+    vector< RenditionPtr> Object::getRenditions( string /*filter*/ ) throw ( Exception )
+    {
+        return m_renditions;
+    }
+
+    string Object::getThumbnailUrl( ) throw ( Exception )
+    {
+        string url;
+        vector< RenditionPtr > renditions = getRenditions( );
+        for ( vector< RenditionPtr >::iterator it = renditions.begin( ); 
+            it != renditions.end( ); ++it)
+                
+        {
+            if ( (*it)->getKind( ) == "cmis:thumbnail" ) return (*it)->getUrl( );    
+        }
+        
+        return url;
     }
 
     string Object::toString( )
@@ -251,6 +265,10 @@ namespace libcmis
             << " by " << getLastModifiedBy() << endl;
         buf << "Change token: " << getChangeToken() << endl;
 
+        // Write Allowable Actions
+        if ( getAllowableActions( ) )
+            buf << endl << getAllowableActions( )->toString( ) << endl;
+
         // Write remaining properties
         static const char* skippedProps[] = {
             "cmis:name", "cmis:baseTypeId", "cmis:objectTypeId", "cmis:createdBy",
@@ -259,7 +277,7 @@ namespace libcmis
         };
         int skippedCount = sizeof( skippedProps ) / sizeof( char* );
 
-        for ( map< string, libcmis::PropertyPtr >::iterator it = getProperties( ).begin();
+        for ( PropertyPtrMap::iterator it = getProperties( ).begin();
                 it != getProperties( ).end( ); ++it )
         {
             string propId = it->first;
@@ -284,6 +302,17 @@ namespace libcmis
                 }
             }
         }
+        
+        vector< libcmis::RenditionPtr > renditions = getRenditions( );
+        if ( !renditions.empty() )
+        {
+            buf << "Renditions: " << endl;
+            for ( vector< libcmis::RenditionPtr >::iterator it = renditions.begin(); 
+                   it != renditions.end(); ++it )
+            {
+                buf << ( *it )->toString( ) << endl;
+            }
+        }
 
         return buf.str();
     }
@@ -292,7 +321,7 @@ namespace libcmis
     {
         // Output the properties
         xmlTextWriterStartElement( writer, BAD_CAST( "cmis:properties" ) );
-        for ( map< string, libcmis::PropertyPtr >::iterator it = getProperties( ).begin( );
+        for ( PropertyPtrMap::iterator it = getProperties( ).begin( );
                 it != getProperties( ).end( ); ++it )
         {
             it->second->toXml( writer );

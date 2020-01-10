@@ -36,11 +36,109 @@
 
 #include <boost/program_options.hpp>
 
-#include <libcmis/session-factory.hxx>
-#include <libcmis/document.hxx>
+#include <libcmis/libcmis.hxx>
 
 using namespace std;
 using namespace ::boost::program_options;
+using libcmis::PropertyPtrMap;
+
+namespace
+{
+    char* lcl_queryAuthCode( const char* url, const char* /*username*/, const char* /*password*/ )
+    {
+        string code;
+        cout << "Copy the following link to your browser and take the code: " << endl << endl << url << endl << endl;
+        cout << "Enter the code:" << endl;
+        cin >> code;
+
+        return strdup( code.c_str() );
+    }
+
+    class CinAuthProvider : public libcmis::AuthProvider
+    {
+        private:
+            string m_user;
+            string m_pass;
+
+        public:
+            CinAuthProvider( ) : m_user( ), m_pass( ) { }
+            ~CinAuthProvider( ) { }
+
+            virtual bool authenticationQuery( string& username, string& password );
+    };
+
+    bool CinAuthProvider::authenticationQuery( string& username, string& password )
+    {
+        bool cancelled = true;
+        bool askUsername = username.empty();
+        if ( askUsername )
+        {
+            if ( m_user.empty() )
+            {
+                cout << "Username (empty to cancel): ";
+                getline( cin, username );
+                cancelled = username.empty();
+                m_user = username;
+            }
+            else
+            {
+                cancelled = false;
+                username = m_user;
+            }
+        }
+
+        if ( !cancelled && ( askUsername || password.empty( ) ) )
+        {
+            if ( m_pass.empty() )
+            {
+                cout << "Password (empty to cancel): ";
+                getline( cin, password );
+                cancelled = password.empty();
+                m_pass = password;
+            }
+            else
+            {
+                password = m_pass;
+                cancelled = false;
+            }
+        }
+        return !cancelled;
+    }
+
+    class CinCertValidationHandler : public libcmis::CertValidationHandler
+    {
+        private:
+            map< string, bool > m_answers;
+
+        public:
+            CinCertValidationHandler( ) : m_answers( ) { }
+            ~CinCertValidationHandler( ) { }
+
+            virtual bool validateCertificate( vector< string > certificates )
+            {
+                if ( certificates.empty( ) )
+                    return false; // Should never happen
+
+                // Show the first certificate (even base64-encoded)
+                string cert = certificates.front();
+                map< string, bool >::iterator it = m_answers.find( cert );
+                if ( it != m_answers.end( ) )
+                    return it->second;
+
+                cout << "Invalid SSL certificate:" << endl << cert << endl;
+                cout << "'openssl x509 -noout -text' can show you the details of this certificate." << endl << endl;
+
+                // Ask whether to validate
+                cout << "Do you want to ignore this problem and go on? yes/no [default: no]: ";
+                string answer;
+                getline( cin, answer );
+
+                m_answers[cert] = answer == "yes";
+
+                return answer == "yes";
+            }
+    };
+}
 
 class CommandException : public exception
 {
@@ -69,7 +167,7 @@ class CmisClient
     public:
         CmisClient( variables_map& vm ) : m_vm( vm ) { }
 
-        libcmis::Session* getSession( ) throw ( CommandException, libcmis::Exception );
+        libcmis::Session* getSession( bool inGetRepositories = false ) throw ( CommandException, libcmis::Exception );
 
         void execute( ) throw ( exception );
 
@@ -103,10 +201,17 @@ map< string, string > CmisClient::getObjectProperties( )
     return result;
 }
 
-libcmis::Session* CmisClient::getSession( ) throw ( CommandException, libcmis::Exception )
+libcmis::Session* CmisClient::getSession( bool inGetRepositories ) throw ( CommandException, libcmis::Exception )
 {
     if ( m_vm.count( "url" ) == 0 )
         throw CommandException( "Missing binding URL" );
+    
+    // Setup the authentication provider in case we have missing credentials
+    libcmis::AuthProviderPtr provider( new CinAuthProvider( ) );
+    libcmis::SessionFactory::setAuthenticationProvider( provider );
+
+    libcmis::CertValidationHandlerPtr certValidator( new CinCertValidationHandler( ) );
+    libcmis::SessionFactory::setCertificateValidationHandler( certValidator );
     
     string url = m_vm["url"].as<string>();
 
@@ -144,21 +249,76 @@ libcmis::Session* CmisClient::getSession( ) throw ( CommandException, libcmis::E
 
     bool verbose = m_vm.count( "verbose" ) > 0;
 
+    libcmis::Session* session = NULL;
     string repoId;
-    list< libcmis::RepositoryPtr > repositories = libcmis::SessionFactory::getRepositories(
-            url, username, password, verbose );
-    if ( repositories.size( ) == 1 )
-        repoId = repositories.front( )->getId( );
-    else
+    // The repository ID is needed to initiate a session
+    if ( m_vm.count( "repository" ) == 0 && !inGetRepositories )
     {
-        // The repository ID is needed to initiate a session
-        if ( m_vm.count( "repository" ) != 1 )
+        // Do we have a single repository on the server?
+        session = getSession( true );
+        if ( session != NULL )
+        {
+            vector< libcmis::RepositoryPtr > repos = session->getRepositories();
+            if ( repos.size() == 1 )
+            {
+                repoId = repos.front( )->getId( );
+                session->setRepository( repoId );
+            }
+        }
+
+        // We couldn't auto-guess the repository, then throw an error
+        if ( repoId.empty( ) )
+        {
+            delete session;
             throw CommandException( "Missing repository ID" );
-        
+        }
+    }
+    else if ( m_vm.count( "repository" ) > 0 )
+    {
         repoId = m_vm["repository"].as< string >();
     }
 
-    return libcmis::SessionFactory::createSession( url, username, password, repoId, verbose );
+    if ( session == NULL )
+    {
+        bool noSslCheck = m_vm.count( "no-ssl-check" ) > 0;
+
+        // Should we use OAuth2?
+        string oauth2ClientId;
+        string oauth2ClientSecret;
+        string oauth2AuthUrl;
+        string oauth2TokenUrl;
+        string oauth2RedirectUri;
+        string oauth2Scope;
+        if ( m_vm.count( "oauth2-client-id" ) > 0 )
+            oauth2ClientId = m_vm["oauth2-client-id"].as< string >();
+        if ( m_vm.count( "oauth2-client-secret" ) > 0 )
+            oauth2ClientSecret = m_vm["oauth2-client-secret"].as< string >();
+        if ( m_vm.count( "oauth2-auth-url" ) > 0 )
+            oauth2AuthUrl = m_vm["oauth2-auth-url"].as< string >();
+        if ( m_vm.count( "oauth2-token-url" ) > 0 )
+            oauth2TokenUrl = m_vm["oauth2-token-url"].as< string >();
+        if ( m_vm.count( "oauth2-redirect-uri" ) > 0 )
+            oauth2RedirectUri = m_vm["oauth2-redirect-uri"].as< string >();
+        if ( m_vm.count( "oauth2-scope" ) > 0 )
+            oauth2Scope = m_vm["oauth2-scope"].as< string >();
+
+        libcmis::OAuth2DataPtr oauth2Data( new libcmis::OAuth2Data( oauth2AuthUrl, oauth2TokenUrl,
+                    oauth2Scope, oauth2RedirectUri, oauth2ClientId, oauth2ClientSecret) );
+
+        if ( oauth2Data->isComplete( ) )
+        {
+            // Set the fallback AuthCode provider
+            libcmis::SessionFactory::setOAuth2AuthCodeProvider( lcl_queryAuthCode );
+        }
+        else
+        {
+            oauth2Data.reset( );
+        }
+
+        session = libcmis::SessionFactory::createSession( url, username, password, repoId, noSslCheck, oauth2Data, verbose );
+    }
+
+    return session;
 }
 
 void CmisClient::execute( ) throw ( exception )
@@ -174,51 +334,19 @@ void CmisClient::execute( ) throw ( exception )
         string command = m_vm["command"].as<string>();
         if ( "list-repos" == command )
         {
-            if ( m_vm.count( "url" ) == 0 )
-                throw CommandException( "Missing binding URL" );
-            
-            string url = m_vm["url"].as<string>();
-
-            // Look for the credentials
-            string username;
-            string password;
-            if ( m_vm.count( "username" ) > 0 )
+            libcmis::Session* session = getSession( true );
+            if ( session != NULL )
             {
-                username = m_vm["username"].as< string >();
-
-                if ( m_vm.count( "password" ) > 0 )
-                    password = m_vm["password"].as< string >();
-            }
-
-            // Look for proxy settings
-            string proxyUrl;
-            string proxyUser;
-            string proxyPass;
-            string noproxy;
-            if ( m_vm.count( "proxy" ) > 0 )
-            {
-                proxyUrl = m_vm["proxy"].as< string >();
-
-                if ( m_vm.count( "proxy-user" ) > 0 )
-                    proxyUser = m_vm["proxy-user"].as< string >();
-                
-                if ( m_vm.count( "proxy-password" ) > 0 )
-                    proxyPass = m_vm["proxy-password"].as< string >();
-
-                if ( m_vm.count( "noproxy" ) > 0 )
-                    noproxy = m_vm["noproxy"].as< string >();
-
-                libcmis::SessionFactory::setProxySettings( proxyUrl, noproxy, proxyUser, proxyPass );
-            }
-
-            bool verbose = m_vm.count( "verbose" ) > 0;
-
-            list< libcmis::RepositoryPtr > repos = libcmis::SessionFactory::getRepositories(
-                    url, username, password, verbose );
+                vector< libcmis::RepositoryPtr > repos = session->getRepositories();
         
-            cout << "Repositories: name (id)" << endl;
-            for ( list< libcmis::RepositoryPtr >::iterator it = repos.begin(); it != repos.end(); ++it )
-                cout << "\t" << ( *it )->getName( ) << " (" << ( *it )->getId( ) << ")" << endl;
+                cout << "Repositories: name (id)" << endl;
+                for ( vector< libcmis::RepositoryPtr >::iterator it = repos.begin(); it != repos.end(); ++it )
+                    cout << "\t" << ( *it )->getName( ) << " (" << ( *it )->getId( ) << ")" << endl;
+            }
+            else
+            {
+                cerr << "Couldn't create a session for some reason" << endl;
+            }
         }
         else if ( "show-root" == command )
         {
@@ -230,6 +358,21 @@ void CmisClient::execute( ) throw ( exception )
                 cout << "------------------------------------------------" << endl;
                 cout << root->toString() << endl;
             }
+
+            delete session;
+        }
+        else if ( "repo-infos" == command )
+        {
+            libcmis::Session* session = getSession( );
+            libcmis::RepositoryPtr repo = session->getRepository( );
+
+            if ( repo )
+            {
+                cout << "------------------------------------------------" << endl;
+                cout << repo->toString() << endl;
+            }
+            else
+                throw CommandException( "Please select a repository" );
 
             delete session;
         }
@@ -319,7 +462,11 @@ void CmisClient::execute( ) throw ( exception )
             if ( NULL != document )
             {
                 // TODO Handle name clashes
-                boost::shared_ptr< istream > in = document->getContentStream( );
+                string streamId;
+                if ( m_vm.count( "stream-id" ) > 0 )
+                    streamId = m_vm["stream-id"].as<string>();
+
+                boost::shared_ptr< istream > in = document->getContentStream( streamId );
                 ofstream out( document->getContentFilename().c_str() );
                 out << in->rdbuf();
                 out.close();
@@ -384,7 +531,7 @@ void CmisClient::execute( ) throw ( exception )
             if ( "cmis:folder" != type->getBaseType( )->getId( ) )
                 throw CommandException( string( "Not a folder type: " ) + folderType );
 
-            map< string, libcmis::PropertyPtr > properties;
+            PropertyPtrMap properties;
             map< string, libcmis::PropertyTypePtr >& propertiesTypes = type->getPropertiesTypes( );
 
             // Set the name
@@ -446,7 +593,7 @@ void CmisClient::execute( ) throw ( exception )
             if ( "cmis:document" != type->getBaseType( )->getId( ) )
                 throw CommandException( string( "Not a document type: " ) + documentType );
 
-            map< string, libcmis::PropertyPtr > properties;
+            PropertyPtrMap properties;
             map< string, libcmis::PropertyTypePtr >& propertiesTypes = type->getPropertiesTypes( );
 
             // Set the name
@@ -531,7 +678,7 @@ void CmisClient::execute( ) throw ( exception )
             libcmis::ObjectTypePtr type = session->getType( object->getType( ) );
             map< string, libcmis::PropertyTypePtr >& propertiesTypes = type->getPropertiesTypes( );
 
-            map< string, libcmis::PropertyPtr > properties;
+            PropertyPtrMap properties;
 
             // Checks for the properties to set if any
             map< string, string > propsToSet = getObjectProperties( );
@@ -742,7 +889,7 @@ void CmisClient::execute( ) throw ( exception )
             if ( object.get() )
             {
                 // Create the properties map
-                map< string, libcmis::PropertyPtr > properties;
+                PropertyPtrMap properties;
                 map< string, string > propsToSet = getObjectProperties( );
                 libcmis::ObjectTypePtr type = session->getType( object->getType( ) );
                 map< string, libcmis::PropertyTypePtr > propertyTypes = type->getPropertiesTypes( );
@@ -870,11 +1017,19 @@ options_description CmisClient::getOptionsDescription( )
         ( "repository,r", value< string >(), "Name of the repository to use" )
         ( "username,u", value< string >(), "Username used to authenticate to the repository" )
         ( "password,p", value< string >(), "Password used to authenticate to the repository" )
+        ( "no-ssl-check", "Disable the verification of SSL certificates. This may come handy"
+                          "for self-signed certificates for example, though it lowers the security" )
         ( "proxy", value< string >(), "HTTP proxy url to override the system settings" )
         ( "noproxy", value< string >(), "Coma separated list if host and domain names not going"
                                         "through the proxy" )
         ( "proxy-username", value< string >(), "Username to authenticate on the proxy" )
         ( "proxy-password", value< string >(), "Password to authenticate on the proxy" )
+        ( "oauth2-client-id", value< string >(), "OAuth2 application client_id" )
+        ( "oauth2-client-secret", value< string >(), "OAuth2 application client_secret" )
+        ( "oauth2-auth-url", value< string >(), "URL to authenticate in the OAuth2 flow" )
+        ( "oauth2-token-url", value< string >(), "URL to convert code to tokens in the OAuth2 flow" )
+        ( "oauth2-redirect-uri", value< string >(), "redirect URI indicating that the authentication is finished in OAuth2 flow" )
+        ( "oauth2-scope", value< string >(), "The authentication scope in OAuth2" )
     ;
 
     options_description setcontentOpts( "modification operations options" );
@@ -888,6 +1043,7 @@ options_description CmisClient::getOptionsDescription( )
                                                 "to be set on the object" )
         ( "message,m", value< string >(), "Check in message" )
         ( "major", "The version to create during the check in will be a major version." )
+        ( "stream-id", value< string >(), "streamId of the rendition to get content." )
     ;
 
     desc.add( setcontentOpts );
@@ -901,6 +1057,8 @@ void CmisClient::printHelp( )
     cerr << endl << "Commands" << endl;
     cerr << "   list-repos\n"
             "           Lists the repositories available on the server" << endl;
+    cerr << "   repo-infos\n"
+            "           Show the informations and capabilities of the selected repository" << endl;
     cerr << "   show-root\n"
             "           Dump the root node of the repository." << endl;
     cerr << "   type-by-id <Type Id 1> [... <Type Id N>]\n"
@@ -911,7 +1069,8 @@ void CmisClient::printHelp( )
             "           Dumps the objects informations for all the paths." << endl;
     cerr << "   get-content <Object Id>\n"
             "           Saves the stream of the content object in the\n"
-            "           current folder. Any existing file is overwritten." << endl;
+            "           current folder. Any existing file is overwritten.\n" 
+            "           streamId can be used to get the desired rendition with --stream-id"<< endl;
     cerr << "   set-content <Object Id>\n"
             "           Replaces the stream of the content object by the\n"
             "           file selected with --input-file." << endl;
@@ -925,8 +1084,11 @@ void CmisClient::printHelp( )
     cerr << "   update-object <Object Id>\n"
             "           Update the object matching id <Object Id> with the properties\n"
             "           defined with --object-property." << endl;
+    cerr << "   move-object <Object Id> <Source Folder Id> <Destination Folder Id>\n"
+            "           Move the object matching id <Object Id> from the\n"
+            "           folder <Source Folder Id> to the folder <Destination Folder Id>." << endl;
     cerr << "   delete <Object Id 1> [... <Object Id N>]\n"
-            "           Delete the objects corresponding to the ids. If the node"
+            "           Delete the objects corresponding to the ids. If the node\n"
             "           is a folder, its content will be removed as well." << endl;
     cerr << "   checkout <Object Id>\n"
             "           Check out the document corresponding to the id and shows the\n"
@@ -978,6 +1140,13 @@ int main ( int argc, char* argv[] )
         cerr << "ERROR: " << e.what() << endl;
         cerr << "------------------------------------------------" << endl;
         client.printHelp();
+        return 1;
+    }
+    catch ( const libcmis::Exception& e )
+    {
+        cerr << "------------------------------------------------" << endl;
+        cerr << "ERROR: " << e.what() << endl;
+        cerr << "------------------------------------------------" << endl;
         return 1;
     }
     catch ( const exception& e )

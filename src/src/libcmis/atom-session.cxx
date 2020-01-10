@@ -40,8 +40,9 @@
 using namespace std;
 
 AtomPubSession::AtomPubSession( string atomPubUrl, string repositoryId,
-        string username, string password, bool verbose ) throw ( libcmis::Exception ) :
-    BaseSession( atomPubUrl, repositoryId, username, password, verbose ),
+        string username, string password, bool noSslCheck,
+        libcmis::OAuth2DataPtr oauth2, bool verbose ) throw ( libcmis::Exception ) :
+    BaseSession( atomPubUrl, repositoryId, username, password, noSslCheck, oauth2, verbose ),
     m_repository( )
 {
     initialize( );
@@ -50,6 +51,12 @@ AtomPubSession::AtomPubSession( string atomPubUrl, string repositoryId,
 AtomPubSession::AtomPubSession( const AtomPubSession& copy ) :
     BaseSession( copy ),
     m_repository( copy.m_repository )
+{
+}
+
+AtomPubSession::AtomPubSession( ) :
+    BaseSession( ),
+    m_repository( )
 {
 }
 
@@ -69,6 +76,65 @@ AtomPubSession::~AtomPubSession( )
 {
 }
 
+void AtomPubSession::parseServiceDocument( const string& buf ) throw ( libcmis::Exception )
+{
+    // parse the content
+    xmlDocPtr doc = xmlReadMemory( buf.c_str(), buf.size(), m_bindingUrl.c_str(), NULL, 0 );
+
+    if ( NULL != doc )
+    {
+        // Check that we have an AtomPub service document
+        xmlNodePtr root = xmlDocGetRootElement( doc );
+        if ( !xmlStrEqual( root->name, BAD_CAST( "service" ) ) )
+            throw libcmis::Exception( "Not an atompub service document" );
+
+        xmlXPathContextPtr xpathCtx = xmlXPathNewContext( doc );
+
+        // Register the Service Document namespaces
+        libcmis::registerNamespaces( xpathCtx );
+
+        if ( NULL != xpathCtx )
+        {
+            string workspacesXPath( "//app:workspace" );
+            xmlXPathObjectPtr xpathObj = xmlXPathEvalExpression( BAD_CAST( workspacesXPath.c_str() ), xpathCtx );
+
+            if ( xpathObj != NULL )
+            {
+                int nbWorkspaces = 0;
+                if ( xpathObj->nodesetval )
+                    nbWorkspaces = xpathObj->nodesetval->nodeNr;
+
+                for ( int i = 0; i < nbWorkspaces; i++ )
+                {
+                    try
+                    {
+                        AtomRepositoryPtr ws( new AtomRepository( xpathObj->nodesetval->nodeTab[i] ) );
+
+                        // Check if we have a repository set
+                        if ( m_repositoryId.empty( ) && i == 0 )
+                            m_repositoryId = ws->getId( );
+
+                        // SharePoint is case insensitive for the id...
+                        if ( libcmis::tolower( ws->getId( ) ) == libcmis::tolower( m_repositoryId ) )
+                            m_repository = ws;
+
+                        m_repositories.push_back( ws );
+                    }
+                    catch ( const libcmis::Exception& )
+                    {
+                        // Invalid repository, don't take care of this
+                    }
+                }
+            }
+        }
+        xmlXPathFreeContext( xpathCtx );
+    }
+    else
+        throw libcmis::Exception( "Failed to parse service document" );
+
+    xmlFreeDoc( doc );
+}
+
 void AtomPubSession::initialize( ) throw ( libcmis::Exception )
 {
     if ( m_repositories.empty() )
@@ -83,67 +149,9 @@ void AtomPubSession::initialize( ) throw ( libcmis::Exception )
         {
             throw e.getCmisException( );
         }
-       
-        // parse the content
-        xmlDocPtr doc = xmlReadMemory( buf.c_str(), buf.size(), m_bindingUrl.c_str(), NULL, 0 );
-
-        if ( NULL != doc )
-        {
-            // Check that we have an AtomPub service document
-            xmlNodePtr root = xmlDocGetRootElement( doc );
-            if ( !xmlStrEqual( root->name, BAD_CAST( "service" ) ) )
-                throw libcmis::Exception( "Not an atompub service document" );
-
-            xmlXPathContextPtr xpathCtx = xmlXPathNewContext( doc );
-
-            // Register the Service Document namespaces
-            libcmis::registerNamespaces( xpathCtx );
-
-            if ( NULL != xpathCtx )
-            {
-                string workspacesXPath( "//app:workspace" );
-                xmlXPathObjectPtr xpathObj = xmlXPathEvalExpression( BAD_CAST( workspacesXPath.c_str() ), xpathCtx );
-
-                if ( xpathObj != NULL )
-                {
-                    int nbWorkspaces = 0;
-                    if ( xpathObj->nodesetval )
-                        nbWorkspaces = xpathObj->nodesetval->nodeNr;
-
-                    for ( int i = 0; i < nbWorkspaces; i++ )
-                    {
-                        try
-                        {
-                            AtomRepositoryPtr ws( new AtomRepository( xpathObj->nodesetval->nodeTab[i] ) );
-
-                            // SharePoint is case insensitive for the id...
-                            if ( libcmis::tolower( ws->getId( ) ) == libcmis::tolower( m_repositoryId ) )
-                                m_repository = ws;
-
-                            m_repositories.push_back( ws );
-                        }
-                        catch ( const libcmis::Exception& )
-                        {
-                            // Invalid repository, don't take care of this
-                        }
-                    }
-                }
-            }
-            xmlXPathFreeContext( xpathCtx );
-        }
-        else
-            throw libcmis::Exception( "Failed to parse service document" );
-
-        xmlFreeDoc( doc );
+    
+        parseServiceDocument( buf );   
     }
-
-}
-
-list< libcmis::RepositoryPtr > AtomPubSession::getRepositories( string url, string username,
-        string password, bool verbose ) throw ( libcmis::Exception )
-{
-    AtomPubSession session( url, string(), username, password, verbose );
-    return session.m_repositories;
 }
 
 AtomRepositoryPtr AtomPubSession::getAtomRepository( ) throw ( libcmis::Exception )
@@ -154,6 +162,25 @@ AtomRepositoryPtr AtomPubSession::getAtomRepository( ) throw ( libcmis::Exceptio
 libcmis::RepositoryPtr AtomPubSession::getRepository( ) throw ( libcmis::Exception )
 {
     return getAtomRepository( );
+}
+
+bool AtomPubSession::setRepository( string repositoryId )
+{
+    vector< libcmis::RepositoryPtr > repos = getRepositories( );
+    bool found = false;
+    for ( vector< libcmis::RepositoryPtr >::iterator it = repos.begin();
+            it != repos.end() && !found; ++it )
+    {
+        libcmis::RepositoryPtr repo = *it;
+        if ( repo->getId() == repositoryId )
+        {
+            AtomRepositoryPtr atomRepo = boost::dynamic_pointer_cast< AtomRepository >( repo );
+            m_repository = atomRepo;
+            m_repositoryId = repositoryId;
+            found = true;
+        }
+    }
+    return found;
 }
 
 libcmis::ObjectPtr AtomPubSession::createObjectFromEntryDoc( xmlDocPtr doc )
@@ -217,11 +244,11 @@ libcmis::ObjectPtr AtomPubSession::getObject( string id ) throw ( libcmis::Excep
     catch ( const CurlException& e )
     {
         if ( ( e.getErrorCode( ) == CURLE_HTTP_RETURNED_ERROR ) &&
-             ( string::npos != e.getErrorMessage( ).find( "404" ) ) )
+             ( e.getHttpStatus( ) == 404 ) )
         {
             string msg = "No such node: ";
             msg += id;
-            throw libcmis::Exception( msg );
+            throw libcmis::Exception( msg, "objectNotFound" );
         }
         else
             throw e.getCmisException();
@@ -247,11 +274,11 @@ libcmis::ObjectPtr AtomPubSession::getObjectByPath( string path ) throw ( libcmi
     catch ( const CurlException& e )
     {
         if ( ( e.getErrorCode( ) == CURLE_HTTP_RETURNED_ERROR ) &&
-             ( string::npos != e.getErrorMessage( ).find( "404" ) ) )
+             ( e.getHttpStatus( ) == 404 ) )
         {
             string msg = "No node corresponding to path: ";
             msg += path;
-            throw libcmis::Exception( msg );
+            throw libcmis::Exception( msg, "objectNotFound" );
         }
         else
             throw e.getCmisException();

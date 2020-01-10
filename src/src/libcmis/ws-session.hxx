@@ -52,15 +52,13 @@ class WSSession : public BaseSession, public SoapSession
     public:
         WSSession( std::string bindingUrl, std::string repositoryId,
                    std::string username, std::string password,
+                   bool noSslCheck = false,
+                   libcmis::OAuth2DataPtr oauth2 = libcmis::OAuth2DataPtr(),
                    bool verbose = false ) throw ( libcmis::Exception );
         WSSession( const WSSession& copy );
         ~WSSession( );
 
         WSSession& operator=( const WSSession& copy );
-
-        static std::list< libcmis::RepositoryPtr > getRepositories( std::string url,
-                        std::string username, std::string password,
-                        bool verbose = false ) throw ( libcmis::Exception );
 
         // Utility methods
 
@@ -92,6 +90,8 @@ class WSSession : public BaseSession, public SoapSession
         // Override session methods
 
         virtual libcmis::RepositoryPtr getRepository( ) throw ( libcmis::Exception );
+
+        virtual bool setRepository( std::string repositoryId );
 
         virtual libcmis::ObjectPtr getObject( std::string id ) throw ( libcmis::Exception );
         

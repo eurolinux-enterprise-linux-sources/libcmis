@@ -29,12 +29,46 @@
 #include "internals.hxx"
 #include "repository.h"
 
+using std::nothrow;
+
+void libcmis_vector_repository_free( libcmis_vector_Repository_Ptr vector )
+{
+    delete vector;
+}
+
+
+size_t libcmis_vector_repository_size( libcmis_vector_Repository_Ptr vector )
+{
+    size_t size = 0;
+    if ( vector != NULL )
+        size = vector->handle.size( );
+    return size;
+}
+
+
+libcmis_RepositoryPtr libcmis_vector_repository_get( libcmis_vector_Repository_Ptr vector, size_t i )
+{
+    libcmis_RepositoryPtr item = NULL;
+    if ( vector != NULL && i < vector->handle.size( ) )
+    {
+        libcmis::RepositoryPtr type = vector->handle[i];
+        item = new ( nothrow ) libcmis_repository( );
+        if ( item )
+            item->handle = type;
+    }
+    return item;
+}
+
+
 libcmis_RepositoryPtr libcmis_repository_create( xmlNodePtr node )
 {
-    libcmis_RepositoryPtr repository = new libcmis_repository( );
+    libcmis_RepositoryPtr repository = new ( nothrow ) libcmis_repository( );
 
-    libcmis::RepositoryPtr handle( new libcmis::Repository( node ) );
-    repository->handle = handle;
+    if ( repository )
+    {
+        libcmis::RepositoryPtr handle( new ( nothrow ) libcmis::Repository( node ) );
+        repository->handle = handle;
+    }
 
     return repository;
 }
@@ -43,16 +77,6 @@ libcmis_RepositoryPtr libcmis_repository_create( xmlNodePtr node )
 void libcmis_repository_free( libcmis_RepositoryPtr repository )
 {
     delete repository;
-}
-
-
-void libcmis_repository_list_free( libcmis_RepositoryPtr* list, long size )
-{
-    for ( int i = 0; i < size; ++i )
-    {
-        delete list[i];
-    }
-    delete[] list;
 }
 
 
@@ -157,3 +181,27 @@ char* libcmis_repository_getPrincipalAnyone( libcmis_RepositoryPtr repository )
         return NULL;
 }
 
+char* libcmis_repository_getCapability(
+        libcmis_RepositoryPtr repository,
+        libcmis_repository_capability_Type capability )
+{
+    if ( repository != NULL && repository->handle != NULL )
+    {
+        std::string value = repository->handle->getCapability( ( libcmis::Repository::Capability ) capability );
+        return strdup( value.c_str( ) );
+    }
+    else
+        return NULL;
+}
+
+bool libcmis_repository_getCapabilityAsBool(
+        libcmis_RepositoryPtr repository,
+        libcmis_repository_capability_Type capability )
+{
+    if ( repository != NULL && repository->handle != NULL )
+    {
+        return repository->handle->getCapabilityAsBool( ( libcmis::Repository::Capability ) capability );
+    }
+    else
+        return false;
+}

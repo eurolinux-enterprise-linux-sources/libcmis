@@ -28,6 +28,7 @@
 
 #include "object-type.hxx"
 #include "xml-utils.hxx"
+#include "property.hxx"
 
 using namespace std;
 
@@ -250,6 +251,7 @@ namespace libcmis
         buf << "Included in supertype query: " << isIncludedInSupertypeQuery( ) << endl;
         buf << "Controllable policy: " << isControllablePolicy( ) << endl;
         buf << "Controllable ACL: " << isControllableACL( ) << endl;
+        buf << "Versionable: " << isVersionable( ) << endl;
 
         buf << "Property Definitions [RO/RW (id) Name]: " << endl;
         map< string, libcmis::PropertyTypePtr > propsTypes = getPropertiesTypes( );

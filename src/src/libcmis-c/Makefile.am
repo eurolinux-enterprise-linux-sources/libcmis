@@ -10,15 +10,17 @@ libcmis_c_@LIBCMIS_API_VERSION@_la_include_HEADERS = \
 	object-type.h \
 	property.h \
 	property-type.h \
+	oauth2-data.h \
+	rendition.h \
 	repository.h \
 	types.h \
 	session.h \
 	session-factory.h \
-	vectors.h
+	vectors.h \
+	libcmis-c.h
 
 lib_LTLIBRARIES = libcmis-c-@LIBCMIS_API_VERSION@.la
 libcmis_c_@LIBCMIS_API_VERSION@_la_SOURCES = \
-	$(libcmis_c_headers_public) \
 	allowable-actions.cxx \
 	document.cxx \
 	error.cxx \
@@ -31,59 +33,17 @@ libcmis_c_@LIBCMIS_API_VERSION@_la_SOURCES = \
 	repository.cxx \
 	session.cxx \
 	session-factory.cxx \
-	vectors.cxx
+	vectors.cxx \
+	oauth2-data.cxx \
+	rendition.cxx
 
-libcmis_c_@LIBCMIS_API_VERSION@_la_LDFLAGS = -export-dynamic -no-undefined -version-info 3:1:0
+libcmis_c_@LIBCMIS_API_VERSION@_la_LDFLAGS = -export-dynamic -no-undefined -version-info 4:1:0
 
 libcmis_c_@LIBCMIS_API_VERSION@_la_LIBADD = \
+	../libcmis/libcmis-@LIBCMIS_API_VERSION@.la \
 	$(XML2_LIBS) \
 	$(CURL_LIBS) \
 	$(BOOST_SMART_PTR_LIBS) \
 	$(BOOST_DATE_TIME_LIBS)
 
 libcmis_c_@LIBCMIS_API_VERSION@_la_includedir = $(includedir)/libcmis-c-@LIBCMIS_API_VERSION@/libcmis-c
-
-if ENABLE_TESTS
-check_PROGRAMS = \
-	test-api \
-	test-c-build
-
-test_api_SOURCES = \
-	test-api.cxx \
-	test-allowable-actions.cxx \
-	test-document.cxx \
-	test-dummies.hxx \
-	test-dummies.cxx \
-	test-folder.cxx \
-	test-object.cxx \
-	test-object-type.cxx \
-	test-property.cxx \
-	test-property-type.cxx \
-	test-repository.cxx
-
-test_api_CXXFLAGS = -I$(top_srcdir)/src/ $(XML2_CFLAGS) $(BOOST_CPPFLAGS)
-
-test_api_LDADD = \
-	libcmis-c-@LIBCMIS_API_VERSION@.la \
-	$(top_builddir)/src/libcmis/libcmis-@LIBCMIS_API_VERSION@.la \
-	$(XML2_LIBS) \
-	$(CURL_LIBS) \
-	$(CPPUNIT_LIBS) \
-	$(BOOST_DATE_TIME_LIBS)
-
-test_c_build_SOURCES = \
-	test-build.c
-
-test_c_build_CFLAGS = -I$(top_srcdir)/src/ $(XML2_CFLAGS)
-
-test_c_build_LDADD = \
-	libcmis-c-@LIBCMIS_API_VERSION@.la \
-	$(top_builddir)/src/libcmis/libcmis-@LIBCMIS_API_VERSION@.la \
-	$(XML2_LIBS) \
-	$(CURL_LIBS) \
-	$(CPPUNIT_LIBS) \
-	$(BOOST_DATE_TIME_LIBS)
-
-TESTS = test-api
-
-endif

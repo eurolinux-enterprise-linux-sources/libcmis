@@ -40,6 +40,7 @@
 #include "xml-utils.hxx"
 
 using namespace std;
+using libcmis::PropertyPtrMap;
 
 namespace
 {
@@ -94,7 +95,7 @@ AtomObject::~AtomObject( )
 {
 }
 
-libcmis::ObjectPtr AtomObject::updateProperties( const map< string, libcmis::PropertyPtr >& properties ) throw ( libcmis::Exception )
+libcmis::ObjectPtr AtomObject::updateProperties( const PropertyPtrMap& properties ) throw ( libcmis::Exception )
 {
     if ( getAllowableActions().get() && !getAllowableActions()->isAllowed( libcmis::ObjectAction::UpdateProperties ) )
         throw libcmis::Exception( string( "UpdateProperties is not allowed on object " ) + getId() );
@@ -140,6 +141,34 @@ libcmis::ObjectPtr AtomObject::updateProperties( const map< string, libcmis::Pro
     return updated;
 }
 
+libcmis::AllowableActionsPtr AtomObject::getAllowableActions( )
+{
+    if ( !m_allowableActions )
+    {
+        // For some reason we had no allowable actions before, get them now.
+        AtomLink* link = getLink( "http://docs.oasis-open.org/ns/cmis/link/200908/allowableactions", "application/cmisallowableactions+xml" );
+        if ( link )
+        {
+            try
+            {
+                libcmis::HttpResponsePtr response = getSession()->httpGetRequest( link->getHref() );
+                string buf = response->getStream()->str();
+                xmlDocPtr doc = xmlReadMemory( buf.c_str(), buf.size(), link->getHref().c_str(), NULL, 0 );
+                xmlNodePtr actionsNode = xmlDocGetRootElement( doc );
+                if ( actionsNode )
+                    m_allowableActions.reset( new libcmis::AllowableActions( actionsNode ) );
+
+                xmlFreeDoc( doc );
+            }
+            catch ( CurlException& )
+            {
+            }
+        }
+    }
+
+    return libcmis::Object::getAllowableActions();
+}
+
 void AtomObject::refreshImpl( xmlDocPtr doc ) throw ( libcmis::Exception )
 {
     bool createdDoc = ( NULL == doc );
@@ -167,7 +196,7 @@ void AtomObject::refreshImpl( xmlDocPtr doc ) throw ( libcmis::Exception )
     m_properties.clear( );
     m_allowableActions.reset( );
     m_links.clear( );
-
+    m_renditions.clear( );
 
     extractInfos( doc );
 
@@ -290,7 +319,32 @@ void AtomObject::extractInfos( xmlDocPtr doc )
                 try
                 {
                     AtomLink link( node );
-                    m_links.push_back( node );
+                    // Add to renditions if alternate link
+                    if ( link.getRel( ) == "alternate" )
+                    {
+                        string kind;
+                        map< string, string >::iterator it = link.getOthers().find( "renditionKind" );
+                        if ( it != link.getOthers( ).end() )
+                            kind = it->second;
+
+                        string title;
+                        it = link.getOthers().find( "title" );
+                        if ( it != link.getOthers( ).end( ) )
+                            title = it->second;
+
+                        long length = -1;
+                        it = link.getOthers( ).find( "length" );
+                        if ( it != link.getOthers( ).end( ) )
+                            length = libcmis::parseInteger( it->second );
+
+                        libcmis::RenditionPtr rendition( new libcmis::Rendition(
+                                    string(), link.getType(), kind,
+                                    link.getHref( ), title, length ) );
+
+                        m_renditions.push_back( rendition );
+                    }
+                    else
+                        m_links.push_back( node );
                 }
                 catch ( const libcmis::Exception& )
                 {
@@ -319,11 +373,11 @@ AtomPubSession* AtomObject::getSession( )
 }
 
 void AtomObject::writeAtomEntry( xmlTextWriterPtr writer,
-        const map< string, libcmis::PropertyPtr >& properties,
+        const PropertyPtrMap& properties,
         boost::shared_ptr< ostream > os, string contentType )
 {
     AtomObject tmp( NULL );
-    map< string, libcmis::PropertyPtr > propertiesCopy( properties );
+    PropertyPtrMap propertiesCopy( properties );
     tmp.m_properties.swap( propertiesCopy );
 
     xmlTextWriterStartElement( writer, BAD_CAST( "atom:entry" ) );
@@ -347,9 +401,9 @@ void AtomObject::writeAtomEntry( xmlTextWriterPtr writer,
     {
         xmlTextWriterStartElement( writer, BAD_CAST( "cmisra:content" ) );
         xmlTextWriterWriteElement( writer, BAD_CAST( "cmisra:mediatype" ), BAD_CAST( contentType.c_str() ) );
+        xmlTextWriterStartElement(writer, BAD_CAST( "cmisra:base64" ) );
 
-        ostringstream encodedStream;
-        libcmis::EncodedData encoder( &encodedStream );
+        libcmis::EncodedData encoder( writer );
         encoder.setEncoding( "base64" );
         istream is( os->rdbuf( ) );
         int bufLength = 1000;
@@ -362,7 +416,7 @@ void AtomObject::writeAtomEntry( xmlTextWriterPtr writer,
         } while ( !is.eof( ) && !is.fail( ) );
         delete[] buf;
         encoder.finish( );
-        xmlTextWriterWriteElement( writer, BAD_CAST( "cmisra:base64" ), BAD_CAST( encodedStream.str().c_str() ) );
+        xmlTextWriterEndElement( writer ); // "cmisra:base64"
 
         xmlTextWriterEndElement( writer );
     }
@@ -386,19 +440,26 @@ AtomLink* AtomObject::getLink( std::string rel, std::string type )
 }
 
 AtomLink::AtomLink( xmlNodePtr node ) throw ( libcmis::Exception ):
-    m_rel( libcmis::getXmlNodeAttributeValue( node, "rel" ) ),
-    m_type( ),
-    m_id( ),
-    m_href( libcmis::getXmlNodeAttributeValue( node, "href" ) )
+    m_rel( ), m_type( ), m_id( ), m_href( ), m_others( )
 {
-    try
+    xmlAttrPtr prop = node->properties;
+    while ( prop != NULL )
     {
-        m_type = libcmis::getXmlNodeAttributeValue( node, "type" );
-        m_id = libcmis::getXmlNodeAttributeValue( node, "id" );
-    }
-    catch ( const libcmis::Exception & )
-    {
-        // id attribute can be missing
-        // type attribute is missing in some implementations (SharePoint)
+        xmlChar* xmlStr = xmlGetProp( node, prop->name );
+        string value( ( char * ) xmlStr );
+
+        if ( xmlStrEqual( prop->name, BAD_CAST( "id" ) ) )
+            m_id = value;
+        else if ( xmlStrEqual( prop->name, BAD_CAST( "type" ) ) )
+            m_type = value;
+        else if ( xmlStrEqual( prop->name, BAD_CAST( "rel" ) ) )
+            m_rel = value;
+        else if ( xmlStrEqual( prop->name, BAD_CAST( "href" ) ) )
+            m_href = value;
+        else
+            m_others[ string( ( char * ) prop->name ) ] = value;
+
+        free( xmlStr );
+        prop = prop->next;
     }
 }

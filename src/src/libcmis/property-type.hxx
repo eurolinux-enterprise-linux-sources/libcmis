@@ -105,6 +105,7 @@ namespace libcmis
             void setOpenChoice( bool openChoice ) { m_openChoice = openChoice; }
 
             void setTypeFromXml( std::string typeStr );
+            void setTypeFromJsonType( std::string jsonType );
     };
     typedef ::boost::shared_ptr< PropertyType > PropertyTypePtr;
 }

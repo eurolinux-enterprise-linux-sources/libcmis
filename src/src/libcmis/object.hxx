@@ -31,6 +31,7 @@
 #include <ctime>
 #include <map>
 #include <string>
+#include <vector>
 
 #ifndef __cplusplus
 #include <stdbool.h>
@@ -45,6 +46,7 @@
 #include "object-type.hxx"
 #include "property.hxx"
 #include "xmlserializable.hxx"
+#include "rendition.hxx"
 
 namespace libcmis
 {
@@ -58,15 +60,16 @@ namespace libcmis
         protected:
             Session* m_session;
 
-            libcmis::ObjectTypePtr m_typeDescription;
+            ObjectTypePtr m_typeDescription;
             time_t m_refreshTimestamp;
 
             /** Type id used as cache before we get it as a property
               */
             std::string m_typeId;
 
-            std::map< std::string, libcmis::PropertyPtr > m_properties;
-            boost::shared_ptr< libcmis::AllowableActions > m_allowableActions;
+            std::map< std::string, PropertyPtr > m_properties;
+            boost::shared_ptr< AllowableActions > m_allowableActions;
+            std::vector< RenditionPtr > m_renditions;
             void initializeFromNode( xmlNodePtr node );
 
         public:
@@ -80,6 +83,7 @@ namespace libcmis
 
             virtual std::string getId( );
             virtual std::string getName( );
+            virtual std::string getStringProperty( const std::string& propertyName );
 
             /** Computes the paths for the objects.
 
@@ -110,7 +114,20 @@ namespace libcmis
 
                 \sa updateProperties to change properties on the server
               */
-            virtual std::map< std::string, PropertyPtr >& getProperties( );
+            virtual libcmis::PropertyPtrMap& getProperties( );
+            
+            
+            /** Get the renditions of the object.
+
+                \param filter is defined by the CMIS spec section 2.2.1.2.4.1.
+                              By default, this value is just ignored, but some bindings and servers 
+                              may use it.
+    
+                \attention
+                    The streamId of the rendition is used in getContentStream( )
+              */
+            virtual std::vector< RenditionPtr> getRenditions( std::string filter = std::string( ) )
+                throw ( Exception );
             virtual AllowableActionsPtr getAllowableActions( ) { return m_allowableActions; }
 
             /** Update the object properties and return the updated object.
@@ -121,7 +138,7 @@ namespace libcmis
                     instances to ease memory handling.
               */
             virtual boost::shared_ptr< Object > updateProperties(
-                        const std::map< std::string, PropertyPtr >& properties ) throw ( Exception ) = 0;
+                        const PropertyPtrMap& properties ) throw ( Exception ) = 0;
 
             virtual ObjectTypePtr getTypeDescription( );
 
@@ -133,6 +150,9 @@ namespace libcmis
             virtual void remove( bool allVersions = true ) throw ( Exception ) = 0;
 
             virtual void move( boost::shared_ptr< Folder > source, boost::shared_ptr< Folder > destination ) throw ( Exception ) = 0;
+
+
+            virtual std::string getThumbnailUrl( ) throw ( Exception );
 
             /** Dump the object as a string for debugging or display purpose.
               */

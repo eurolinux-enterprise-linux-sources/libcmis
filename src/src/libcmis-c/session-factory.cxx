@@ -33,9 +33,124 @@
 #include <libcmis/session-factory.hxx>
 
 #include "internals.hxx"
+#include "session.h"
 #include "session-factory.h"
+#include "vectors.h"
 
 using namespace std;
+
+namespace
+{
+    size_t const CRED_MAX_LEN = 1024;
+
+    class WrapperAuthProvider : public libcmis::AuthProvider
+    {
+        private:
+            libcmis_authenticationCallback m_callback;
+
+        public:
+            WrapperAuthProvider( libcmis_authenticationCallback callback ) :
+                m_callback( callback )
+            {
+            }
+            virtual ~WrapperAuthProvider( ) { };
+
+            virtual bool authenticationQuery( string& username, string& password );
+    };
+
+    bool WrapperAuthProvider::authenticationQuery( string& username, string& password )
+    {
+        /* NOTE: As I understand this, the callback is responsible for
+         * filling the correct username and password (possibly using
+         * the passed values as defaults in some dialog or so). But then
+         * there is no guarantee that the new username/password will
+         * not be longer than the present one, in which case it will
+         * not fit into the available space! For now, use a buffer size
+         * big enough for practical purposes.
+         *
+         * It might be a better idea to change the callback's signature
+         * to bool ( * )( char** username, char** password )
+         * and make it the callee's responsibility to reallocate the
+         * strings if it needs to.
+         */
+        char user[CRED_MAX_LEN];
+        strncpy(user, username.c_str( ), sizeof( user ) );
+        user[min( username.size( ), CRED_MAX_LEN )] = '\0';
+        char pass[CRED_MAX_LEN];
+        strncpy(pass, password.c_str( ), sizeof( pass ) );
+        pass[min( password.size( ), CRED_MAX_LEN )] = '\0';
+
+        bool result = m_callback( user, pass );
+
+        // Update the username and password with the input
+        string newUser( user );
+        username.swap( newUser );
+
+        string newPass( pass );
+        password.swap( newPass );
+
+        return result;
+    }
+
+
+    class WrapperCertHandler : public libcmis::CertValidationHandler
+    {
+        private:
+            libcmis_certValidationCallback m_callback;
+        public:
+            WrapperCertHandler( libcmis_certValidationCallback callback ) :
+                m_callback( callback )
+            {
+            }
+            virtual ~WrapperCertHandler( ) { };
+
+            virtual bool validateCertificate( vector< string > certificatesChain );
+    };
+
+    bool WrapperCertHandler::validateCertificate( vector< string > certificatesChain )
+    {
+        libcmis_vector_string_Ptr chain = new ( nothrow ) libcmis_vector_string( );
+        if ( chain )
+            chain->handle = certificatesChain;
+
+        bool result = m_callback( chain );
+
+        libcmis_vector_string_free( chain );
+        return result;
+    }
+}
+
+std::string createString( char* str )
+{
+    if ( str )
+        return string( str );
+    else
+        return string( );
+}
+
+void libcmis_setAuthenticationCallback( libcmis_authenticationCallback callback )
+{
+    libcmis::AuthProviderPtr provider( new ( nothrow ) WrapperAuthProvider( callback ) );
+    if ( provider )
+        libcmis::SessionFactory::setAuthenticationProvider( provider );
+}
+
+void libcmis_setCertValidationCallback( libcmis_certValidationCallback callback )
+{
+    libcmis::CertValidationHandlerPtr handler( new ( nothrow )WrapperCertHandler( callback ) );
+    if ( handler )
+        libcmis::SessionFactory::setCertificateValidationHandler( handler );
+}
+
+void libcmis_setOAuth2AuthCodeProvider( libcmis_oauth2AuthCodeProvider callback )
+{
+    libcmis::SessionFactory::setOAuth2AuthCodeProvider( callback );
+}
+
+libcmis_oauth2AuthCodeProvider libcmis_getOAuth2AuthCodeProvider( )
+{
+    return libcmis::SessionFactory::getOAuth2AuthCodeProvider( );
+}
 
 void libcmis_setProxySettings( char* proxy, char* noProxy,
         char* proxyUser, char* proxyPass )
@@ -69,6 +184,8 @@ libcmis_SessionPtr libcmis_createSession(
         char* repositoryId,
         char* username,
         char* password,
+        bool noSslCheck,
+        libcmis_OAuth2DataPtr oauth2,
         bool  verbose,
         libcmis_ErrorPtr error )
 {
@@ -76,48 +193,48 @@ libcmis_SessionPtr libcmis_createSession(
 
     try
     {
-        libcmis::Session* handle = libcmis::SessionFactory::createSession( bindingUrl, username,
-                password, repositoryId, verbose );
+        libcmis::OAuth2DataPtr oauth2Handle;
+        if ( oauth2 != NULL )
+            oauth2Handle = oauth2->handle;
+
+        libcmis::Session* handle = libcmis::SessionFactory::createSession(
+                createString( bindingUrl ),
+                createString( username ),
+                createString( password ),
+                createString( repositoryId ), noSslCheck, oauth2Handle, verbose );
         session = new libcmis_session( );
         session->handle = handle;
     }
     catch ( const libcmis::Exception& e )
     {
-        // Set the error handle
         if ( error != NULL )
-            error->handle = new libcmis::Exception( e );
+        {
+            error->message = strdup( e.what() );
+            error->type = strdup( e.getType().c_str() );
+        }
+    }
+    catch ( const bad_alloc& e )
+    {
+        if ( error != NULL )
+        {
+            error->message = strdup( e.what() );
+            error->badAlloc = true;
+        }
     }
 
     return session;
 }
 
-libcmis_RepositoryPtr* libcmis_getRepositories(
+libcmis_vector_Repository_Ptr libcmis_getRepositories(
         char* bindingUrl,
         char* username,
         char* password,
         bool  verbose,
         libcmis_ErrorPtr error )
 {
-    libcmis_RepositoryPtr* repositories = NULL;
-    try
-    {
-        list< libcmis::RepositoryPtr > repos = libcmis::SessionFactory::getRepositories(
-               bindingUrl, username, password, verbose );
-
-        repositories = new libcmis_RepositoryPtr[ repos.size() ];
-        list< libcmis::RepositoryPtr >::iterator it = repos.begin( );
-        for ( int i = 0; it != repos.end( ); ++it, ++i )
-        {
-            libcmis_RepositoryPtr repository = new libcmis_repository( );
-            repository->handle = *it;
-            repositories[i] = repository;
-        }
-    }
-    catch ( const libcmis::Exception& e )
-    {
-        // Set the error handle
-        if ( error != NULL )
-            error->handle = new libcmis::Exception( e );
-    }
+    libcmis_SessionPtr session = libcmis_createSession(
+            bindingUrl, NULL, username, password, false, NULL, verbose, error );
+    libcmis_vector_Repository_Ptr repositories = libcmis_session_getRepositories( session );
+    libcmis_session_free( session );
     return repositories;
 }

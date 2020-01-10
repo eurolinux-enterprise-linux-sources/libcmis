@@ -34,6 +34,16 @@ using namespace std;
 
 namespace libcmis
 {
+    Property::Property( ):
+        m_propertyType( ),
+        m_strValues( ),
+        m_boolValues( ),
+        m_longValues( ),
+        m_doubleValues( ),
+        m_dateTimeValues( )
+    {
+    }
+
     Property::Property( PropertyTypePtr propertyType, std::vector< std::string > strValues ) :
         m_propertyType( propertyType ),
         m_strValues( ),
@@ -93,6 +103,10 @@ namespace libcmis
         }
     }
 
+    void Property::setPropertyType( PropertyTypePtr propertyType)
+    {
+        m_propertyType = propertyType;
+    }
     void Property::toXml( xmlTextWriterPtr writer )
     {
         // Don't write the property if we have no type for it.
@@ -119,6 +133,20 @@ namespace libcmis
 
             xmlTextWriterEndElement( writer );
         }
+    }
+    
+    string Property::toString( )
+    {
+        string res;
+        if ( getPropertyType( ) != NULL )
+        {
+            for ( vector< string >::iterator it = m_strValues.begin( ); 
+                    it != m_strValues.end( ); ++it )
+            {
+                res.append( *it );
+            }
+        }
+        return res;
     }
     
     PropertyPtr parseProperty( xmlNodePtr node, ObjectTypePtr objectType )

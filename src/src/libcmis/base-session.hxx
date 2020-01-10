@@ -30,7 +30,7 @@
 
 #include <istream>
 #include <sstream>
-#include <list>
+#include <vector>
 #include <map>
 #include <string>
 
@@ -39,8 +39,11 @@
 #include <libxml/xpath.h>
 
 #include "exception.hxx"
+#include "oauth2-data.hxx"
 #include "session.hxx"
 #include "xml-utils.hxx"
+
+class OAuth2Handler;
 
 class CurlException : public std::exception
 {
@@ -91,64 +94,81 @@ class CurlException : public std::exception
 class BaseSession : public libcmis::Session
 {
     private:
-        libcmis::AuthProviderPtr m_authProvider;
-
         CURL* m_curlHandle;
         bool  m_no100Continue;
-
-    protected:
+    protected: 
+        OAuth2Handler* m_oauth2Handler;
         std::string m_bindingUrl;
         std::string m_repositoryId;
         std::string m_username;
         std::string m_password;
         bool m_authProvided;
 
-        std::list< libcmis::RepositoryPtr > m_repositories;
+        std::vector< libcmis::RepositoryPtr > m_repositories;
 
         bool m_verbose;
         bool m_noHttpErrors;
-
+        bool m_noSSLCheck;
+        bool m_refreshedToken;
     public:
         BaseSession( std::string sBindingUrl, std::string repository,
-                        std::string username, std::string password,
-                        bool verbose = false ) throw ( libcmis::Exception );
+                     std::string username, std::string password,
+                     bool noSslCheck = false,
+                     libcmis::OAuth2DataPtr oauth2 = libcmis::OAuth2DataPtr(), bool verbose = false )
+            throw ( libcmis::Exception );
+
         BaseSession( const BaseSession& copy );
         ~BaseSession( );
 
         BaseSession& operator=( const BaseSession& copy );
 
-        std::string& getUsername( ) { return m_username; }
+        std::string& getUsername( ) throw ( CurlException );
 
-        std::string& getPassword( ) { return m_password; }
+        std::string& getPassword( ) throw ( CurlException );
 
         std::string& getRepositoryId( ) { return m_repositoryId; }
 
         /** Don't throw the HTTP errors as CurlExceptions. 
           */
         void setNoHttpErrors( bool noHttpErrors ) { m_noHttpErrors = noHttpErrors; }
+        
+        /** Set the OAuth2 data and get the access / refresh tokens.
+          */
+        void setOAuth2Data( libcmis::OAuth2DataPtr oauth2 ) throw ( libcmis::Exception );
 
         // Utility methods
-        
+       
         std::string getRootId( ) throw ( libcmis::Exception ) { return getRepository()->getRootId( ); }
 
         std::string createUrl( const std::string& pattern, std::map< std::string, std::string > variables );
+        
+        std::string getBindingUrl( ) { return m_bindingUrl; }
 
         libcmis::HttpResponsePtr httpGetRequest( std::string url ) throw ( CurlException );
         libcmis::HttpResponsePtr httpPutRequest( std::string url, std::istream& is, std::vector< std::string > headers ) throw ( CurlException );
-        libcmis::HttpResponsePtr httpPostRequest( std::string url, std::istringstream& is, std::string contentType ) throw ( CurlException );
+        libcmis::HttpResponsePtr httpPostRequest( const std::string& url, std::istream& is, const std::string& contentType, bool redirect = true ) throw ( CurlException );
         void httpDeleteRequest( std::string url ) throw ( CurlException );
-
+        
         long getHttpStatus( );
 
         // Session methods
 
+        virtual void setNoSSLCertificateCheck( bool noCheck );
+
+        virtual std::vector< libcmis::RepositoryPtr > getRepositories( );
+
         virtual libcmis::FolderPtr getRootFolder() throw ( libcmis::Exception );
         
         virtual libcmis::FolderPtr getFolder( std::string id ) throw ( libcmis::Exception );
+        
+        virtual std::string getRefreshToken( ) throw ( libcmis::Exception );    
+    protected:
+        BaseSession( );
 
-        virtual void setAuthenticationProvider( libcmis::AuthProviderPtr provider ) { m_authProvider = provider; }
     private:
-        void httpRunRequest( std::string url ) throw ( CurlException );
+        void checkCredentials( ) throw ( CurlException );
+        void httpRunRequest( std::string url, std::vector< std::string > headers = std::vector< std::string > ( ), bool redirect = true ) throw ( CurlException );
+        void initProtocols( );
 };
 
 #endif

@@ -38,13 +38,17 @@
 #include <libcmis/property.hxx>
 #include <libcmis/repository.hxx>
 #include <libcmis/session.hxx>
+#include <libcmis/session-factory.hxx>
+
+std::string createString( char* str );
 
 struct libcmis_error
 {
-    std::exception* handle;
-    char* cached_type;
+    char* message;
+    char* type;
+    bool badAlloc;
 
-    libcmis_error( ) : handle( NULL ), cached_type( NULL ) { }
+    libcmis_error( ) : message( NULL ), type( NULL ), badAlloc( false ) { }
 };
 
 struct libcmis_session
@@ -144,6 +148,20 @@ struct libcmis_document : public libcmis_object
     }
 };
 
+struct libcmis_oauth2data
+{
+    libcmis::OAuth2DataPtr handle;
+
+    libcmis_oauth2data( ) : handle( ) { }
+};
+
+struct libcmis_rendition
+{
+    libcmis::RenditionPtr handle;
+
+    libcmis_rendition( ) : handle( ) { }
+};
+
 struct libcmis_vector_bool
 {
     std::vector< bool > handle;
@@ -219,6 +237,20 @@ struct libcmis_vector_document
     std::vector< libcmis::DocumentPtr > handle;
 
     libcmis_vector_document( ) : handle( ) { }
+};
+
+struct libcmis_vector_repository
+{
+    std::vector< libcmis::RepositoryPtr > handle;
+
+    libcmis_vector_repository( ) : handle( ) { }
+};
+
+struct libcmis_vector_rendition
+{
+    std::vector< libcmis::RenditionPtr > handle;
+
+    libcmis_vector_rendition( ) : handle( ) { }
 };
 
 #endif

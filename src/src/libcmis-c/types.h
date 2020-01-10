@@ -36,6 +36,23 @@ extern "C" {
 
 #include <stddef.h>
 
+
+/* Vectors of simple types */
+
+
+typedef struct libcmis_vector_bool* libcmis_vector_bool_Ptr;
+
+typedef struct libcmis_vector_string* libcmis_vector_string_Ptr;
+
+typedef struct libcmis_vector_long* libcmis_vector_long_Ptr;
+
+typedef struct libcmis_vector_double* libcmis_vector_double_Ptr;
+
+typedef struct libcmis_vector_time* libcmis_vector_time_Ptr;
+
+typedef struct libcmis_vector_repository* libcmis_vector_Repository_Ptr;
+
+
 /* AllowableActions */
 
     
@@ -156,6 +173,24 @@ typedef enum
 
 /* Repository */
 
+typedef enum
+{
+    libcmis_capability_ACL,
+    libcmis_capability_AllVersionsSearchable,
+    libcmis_capability_Changes,
+    libcmis_capability_ContentStreamUpdatability,
+    libcmis_capability_GetDescendants,
+    libcmis_capability_GetFolderTree,
+    libcmis_capability_OrderBy,
+    libcmis_capability_Multifiling,
+    libcmis_capability_PWCSearchable,
+    libcmis_capability_PWCUpdatable,
+    libcmis_capability_Query,
+    libcmis_capability_Renditions,
+    libcmis_capability_Unfiling,
+    libcmis_capability_VersionSpecificFiling,
+    libcmis_capability_Join
+} libcmis_repository_capability_Type;
 
 typedef struct libcmis_repository* libcmis_RepositoryPtr;
 
@@ -166,21 +201,24 @@ typedef struct libcmis_repository* libcmis_RepositoryPtr;
 typedef struct libcmis_session* libcmis_SessionPtr;
 
 typedef bool ( *libcmis_authenticationCallback )( char* username, char* password );
+typedef bool ( *libcmis_certValidationCallback )( libcmis_vector_string_Ptr certificatesChain );
+typedef char * ( *libcmis_oauth2AuthCodeProvider ) ( const char* authUrl, const char* username, const char* password );
 
 
-/* Vectors of simple types */
+/* OAuth2Data */
 
 
-typedef struct libcmis_vector_bool* libcmis_vector_bool_Ptr;
+typedef struct libcmis_oauth2data* libcmis_OAuth2DataPtr;
 
-typedef struct libcmis_vector_string* libcmis_vector_string_Ptr;
+typedef char* ( *libcmis_OAuth2AuthCodeProvider )( const char* authUrl,
+        const char* username, const char* password );
 
-typedef struct libcmis_vector_long* libcmis_vector_long_Ptr;
 
-typedef struct libcmis_vector_double* libcmis_vector_double_Ptr;
+/* Rendition */
 
-typedef struct libcmis_vector_time* libcmis_vector_time_Ptr;
 
+typedef struct libcmis_rendition* libcmis_RenditionPtr;
+typedef struct libcmis_vector_rendition* libcmis_vector_rendition_Ptr;
 
 #ifdef __cplusplus
 }

@@ -1,0 +1,107 @@
+From 043561716b1c7c23c1576631c5bdca93e6e9ffe5 Mon Sep 17 00:00:00 2001
+From: David Tardon <dtardon@redhat.com>
+Date: Fri, 5 Sep 2014 09:53:50 +0200
+Subject: [PATCH] fix mismatching exceptions
+
+---
+ src/libcmis/base-session.cxx | 56 +++++++++++++++++++++++++++++++++++---------
+ 1 file changed, 45 insertions(+), 11 deletions(-)
+
+diff --git a/src/libcmis/base-session.cxx b/src/libcmis/base-session.cxx
+index 7f6a413..80c53e4 100644
+--- a/src/libcmis/base-session.cxx
++++ b/src/libcmis/base-session.cxx
+@@ -287,8 +287,15 @@ libcmis::HttpResponsePtr BaseSession::httpGetRequest( string url ) throw ( CurlE
+         // Need to use the refresh token to get a new one.
+         if ( getHttpStatus( ) == 401 && !getRefreshToken( ).empty( ) && !m_refreshedToken )
+         {        
+-            // Refresh the token
+-            m_oauth2Handler->refresh( );
++            try
++            {
++                // Refresh the token
++                m_oauth2Handler->refresh( );
++            }
++            catch ( const libcmis::Exception& e )
++            {
++                throw CurlException( e.what() );
++            }
+             
+             // Resend the query
+             try
+@@ -370,8 +377,15 @@ libcmis::HttpResponsePtr BaseSession::httpPutRequest( string url, istream& is, v
+         if ( status == 401 && !getRefreshToken( ).empty( ) && !m_refreshedToken )
+         {
+             
+-            // Refresh the token
+-            m_oauth2Handler->refresh( );
++            try
++            {
++                // Refresh the token
++                m_oauth2Handler->refresh( );
++            }
++            catch ( const libcmis::Exception& e )
++            {
++                throw CurlException( e.what() );
++            }
+             
+             // Resend the query
+             try
+@@ -457,8 +471,15 @@ libcmis::HttpResponsePtr BaseSession::httpPostRequest( const string& url, istrea
+         // Need to use the refresh token to get a new one.
+         if ( status == 401 && !getRefreshToken( ).empty( ) && !m_refreshedToken )            
+         {          
+-            // Refresh the token
+-            m_oauth2Handler->refresh( );
++            try
++            {
++                // Refresh the token
++                m_oauth2Handler->refresh( );
++            }
++            catch ( const libcmis::Exception& e )
++            {
++                throw CurlException( e.what() );
++            }
+             
+             // Resend the query
+             try
+@@ -501,9 +522,16 @@ void BaseSession::httpDeleteRequest( string url ) throw ( CurlException )
+         // Need to use the refresh token to get a new one.
+         if ( getHttpStatus( ) == 401 && !getRefreshToken( ).empty( ) && !m_refreshedToken )            
+         {
+-            
+-            // Refresh the token
+-            m_oauth2Handler->refresh( );
++            try
++            {
++                // Refresh the token
++                m_oauth2Handler->refresh( );
++            }
++            catch ( const libcmis::Exception& e )
++            {
++                throw CurlException( e.what() );
++            }
++
+             // Resend the query
+             try
+             {
+@@ -722,8 +750,14 @@ void BaseSession::setOAuth2Data( libcmis::OAuth2DataPtr oauth2 ) throw ( libcmis
+ 
+     // Try to get the authentication code using the given provider.
+  
+-    authCode = m_oauth2Handler->oauth2Authenticate( );
+- 
++    try
++    {
++        authCode = m_oauth2Handler->oauth2Authenticate( );
++    }
++    catch ( const CurlException& e )
++    {
++        throw e.getCmisException( );
++    }
+ 
+     // If that didn't work, call the fallback provider from SessionFactory
+     try
+-- 
+1.9.3
+

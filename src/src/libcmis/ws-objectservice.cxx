@@ -31,6 +31,7 @@
 #include "ws-session.hxx"
 
 using namespace std;
+using libcmis::PropertyPtrMap;
 
 ObjectService::ObjectService( WSSession* session ) :
     m_session( session ),
@@ -63,7 +64,7 @@ libcmis::ObjectPtr ObjectService::getObject( string repoId, string id ) throw ( 
 {
     libcmis::ObjectPtr object;
 
-    GetObject request( repoId, id );
+    class GetObject request( repoId, id );
     vector< SoapResponsePtr > responses = m_session->soapRequest( m_url, request );
     if ( responses.size( ) == 1 )
     {
@@ -93,9 +94,29 @@ libcmis::ObjectPtr ObjectService::getObjectByPath( string repoId, string path ) 
     return object;
 }
 
+vector< libcmis::RenditionPtr > ObjectService::getRenditions(
+        string repoId, string objectId, string filter ) throw ( libcmis::Exception )
+{
+    vector< libcmis::RenditionPtr > renditions;
+
+    GetRenditions request( repoId, objectId, filter );
+    vector< SoapResponsePtr > responses = m_session->soapRequest( m_url, request );
+    if ( responses.size( ) == 1 )
+    {
+        SoapResponse* resp = responses.front( ).get( );
+        GetRenditionsResponse* response = dynamic_cast< GetRenditionsResponse* >( resp );
+        if ( response != NULL )
+        {
+            renditions = response->getRenditions( );
+        }
+    }
+
+    return renditions;
+}
+
 libcmis::ObjectPtr ObjectService::updateProperties(
         string repoId, string objectId,
-        const map< string, libcmis::PropertyPtr >& properties,
+        const PropertyPtrMap& properties,
         string changeToken ) throw ( libcmis::Exception )
 {
     libcmis::ObjectPtr object;
@@ -170,7 +191,7 @@ void ObjectService::setContentStream( std::string repoId, std::string objectId, 
     m_session->soapRequest( m_url, request );
 }
 
-libcmis::FolderPtr ObjectService::createFolder( string repoId, const map< string, libcmis::PropertyPtr >& properties,
+libcmis::FolderPtr ObjectService::createFolder( string repoId, const PropertyPtrMap& properties,
         string folderId ) throw ( libcmis::Exception )
 {
     libcmis::FolderPtr folder;
@@ -191,7 +212,7 @@ libcmis::FolderPtr ObjectService::createFolder( string repoId, const map< string
     return folder;
 }
 
-libcmis::DocumentPtr ObjectService::createDocument( string repoId, const map< string, libcmis::PropertyPtr >& properties,
+libcmis::DocumentPtr ObjectService::createDocument( string repoId, const PropertyPtrMap& properties,
         string folderId, boost::shared_ptr< ostream > stream, string contentType, string fileName ) throw ( libcmis::Exception )
 {
     libcmis::DocumentPtr document;

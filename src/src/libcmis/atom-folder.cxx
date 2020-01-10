@@ -33,6 +33,7 @@
 #include "xml-utils.hxx"
 
 using namespace std;
+using libcmis::PropertyPtrMap;
 
 namespace
 {
@@ -57,8 +58,11 @@ vector< libcmis::ObjectPtr > AtomFolder::getChildren( ) throw ( libcmis::Excepti
 {
     AtomLink* childrenLink = getLink( "down", "application/atom+xml;type=feed" );
 
+    // Some servers aren't giving the GetChildren properly... if not defined, we need to try
+    // as we may have the right to proceed.
     if ( ( NULL == childrenLink ) || ( getAllowableActions( ).get() &&
-                !getAllowableActions()->isAllowed( libcmis::ObjectAction::GetChildren ) ) )
+                ( !getAllowableActions()->isAllowed( libcmis::ObjectAction::GetChildren ) &&
+                  getAllowableActions()->isDefined( libcmis::ObjectAction::GetChildren ) ) ) )
         throw libcmis::Exception( string( "GetChildren not allowed on node " ) + getId() );
 
     vector< libcmis::ObjectPtr > children;
@@ -126,14 +130,14 @@ vector< libcmis::ObjectPtr > AtomFolder::getChildren( ) throw ( libcmis::Excepti
     return children;
 }
 
-libcmis::FolderPtr AtomFolder::createFolder( const map< string, libcmis::PropertyPtr >& properties )
+libcmis::FolderPtr AtomFolder::createFolder( const PropertyPtrMap& properties )
     throw( libcmis::Exception )
 {
     AtomLink* childrenLink = getLink( "down", "application/atom+xml;type=feed" );
 
     if ( ( NULL == childrenLink ) || ( getAllowableActions( ).get() &&
                 !getAllowableActions()->isAllowed( libcmis::ObjectAction::CreateFolder ) ) )
-        throw libcmis::Exception( string( "CreateFolder not allowed on folder " ) + getId() );
+        throw libcmis::Exception( string( "CreateFolder not allowed on folder " ) + getId(), "permissionDenied" );
 
     xmlBufferPtr buf = xmlBufferCreate( );
     xmlTextWriterPtr writer = xmlNewTextWriterMemory( buf, 0 );
@@ -171,38 +175,36 @@ libcmis::FolderPtr AtomFolder::createFolder( const map< string, libcmis::Propert
 
     libcmis::FolderPtr newFolder = boost::dynamic_pointer_cast< libcmis::Folder >( created );
     if ( !newFolder.get( ) )
-        throw libcmis::Exception( string( "Created object is not a folder: " ) + created->getId( ) );
+        throw libcmis::Exception( string( "Created object is not a folder: " ) + created->getId( ), "constraint" );
 
     return newFolder;
 }
 
-libcmis::DocumentPtr AtomFolder::createDocument( const map< string, libcmis::PropertyPtr >& properties,
+libcmis::DocumentPtr AtomFolder::createDocument( const PropertyPtrMap& properties,
         boost::shared_ptr< ostream > os, string contentType, string ) throw ( libcmis::Exception )
 {
     AtomLink* childrenLink = getLink( "down", "application/atom+xml;type=feed" );
 
     if ( ( NULL == childrenLink ) || ( getAllowableActions( ).get() &&
-                !getAllowableActions()->isAllowed( libcmis::ObjectAction::CreateDocument ) ) )
+                !getAllowableActions()->isAllowed( libcmis::ObjectAction::CreateDocument ) &&
+                getAllowableActions()->isDefined( libcmis::ObjectAction::CreateDocument ) ) )
         throw libcmis::Exception( string( "CreateDocument not allowed on folder " ) + getId() );
 
-    xmlBufferPtr buf = xmlBufferCreate( );
-    xmlTextWriterPtr writer = xmlNewTextWriterMemory( buf, 0 );
+    stringstream ss;
+    xmlOutputBufferPtr buf = xmlOutputBufferCreateIO(libcmis::stringstream_write_callback, NULL, &ss, NULL);
+    xmlTextWriterPtr writer = xmlNewTextWriter(buf);
 
     xmlTextWriterStartDocument( writer, NULL, NULL, NULL );
 
     AtomObject::writeAtomEntry( writer, properties, os, contentType );
 
     xmlTextWriterEndDocument( writer );
-    string str( ( const char * )xmlBufferContent( buf ) );
-    istringstream is( str );
-
     xmlFreeTextWriter( writer );
-    xmlBufferFree( buf );
 
     libcmis::HttpResponsePtr response;
     try
     {
-        response = getSession( )->httpPostRequest( childrenLink->getHref( ), is, "application/atom+xml;type=entry" );
+        response = getSession( )->httpPostRequest( childrenLink->getHref( ), ss, "application/atom+xml;type=entry" );
     }
     catch ( const CurlException& e )
     {
@@ -210,9 +212,37 @@ libcmis::DocumentPtr AtomFolder::createDocument( const map< string, libcmis::Pro
     }
 
     string respBuf = response->getStream( )->str( );
-    xmlDocPtr doc = xmlReadMemory( respBuf.c_str(), respBuf.size(), getInfosUrl().c_str(), NULL, 0 );
+    xmlDocPtr doc = xmlReadMemory( respBuf.c_str(), respBuf.size(), getInfosUrl().c_str(), NULL, XML_PARSE_NOERROR );
     if ( NULL == doc )
-        throw libcmis::Exception( "Failed to parse object infos" );
+    {
+        // We may not have the created document entry in the response body: this is
+        // the behaviour of some servers, but the standard says we need to look for
+        // the Location header.
+        map< string, string >& headers = response->getHeaders( );
+        map< string, string >::iterator it = headers.find( "Location" );
+
+        // Some servers like Lotus Live aren't sending Location header, but Content-Location
+        if ( it == headers.end( ) )
+            it = headers.find( "Content-Location" );
+
+        if ( it != headers.end() )
+        {
+            try
+            {
+                response = getSession( )->httpGetRequest( it->second );
+                respBuf = response->getStream( )->str( );
+                doc = xmlReadMemory( respBuf.c_str(), respBuf.size(), getInfosUrl().c_str(), NULL, XML_PARSE_NOERROR );
+            }
+            catch ( const CurlException& e )
+            {
+                throw e.getCmisException( );
+            }
+        }
+
+        // if doc is still NULL after that, then throw an exception
+        if ( NULL == doc )
+            throw libcmis::Exception( "Missing expected response from server" );
+    }
 
     libcmis::ObjectPtr created = getSession( )->createObjectFromEntryDoc( doc );
     xmlFreeDoc( doc );

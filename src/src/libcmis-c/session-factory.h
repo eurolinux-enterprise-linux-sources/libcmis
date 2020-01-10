@@ -34,6 +34,11 @@ extern "C" {
 
 #include "types.h"
 
+void libcmis_setAuthenticationCallback( libcmis_authenticationCallback callback );
+void libcmis_setCertValidationCallback( libcmis_certValidationCallback callback );
+void libcmis_setOAuth2AuthCodeProvider( libcmis_oauth2AuthCodeProvider callback );
+libcmis_oauth2AuthCodeProvider libcmis_getOAuth2AuthCodeProvider( );
+
 void libcmis_setProxySettings(
         char* proxy,
         char* noProxy,
@@ -50,10 +55,16 @@ libcmis_SessionPtr libcmis_createSession(
         char* repositoryId,
         char* username,
         char* password,
+        bool noSslCheck,
+        libcmis_OAuth2DataPtr oauth2,
         bool  verbose,
         libcmis_ErrorPtr error );
 
-libcmis_RepositoryPtr* libcmis_getRepositories(
+/**
+    \deprecated
+        use libcmis_createSession and libcmis_session_getRepositories instead
+  */
+libcmis_vector_Repository_Ptr libcmis_getRepositories(
         char* bindingUrl,
         char* username,
         char* password,

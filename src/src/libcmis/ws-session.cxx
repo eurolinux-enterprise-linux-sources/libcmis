@@ -40,8 +40,9 @@
 using namespace std;
 
 WSSession::WSSession( string bindingUrl, string repositoryId, string username,
-        string password, bool verbose ) throw ( libcmis::Exception ) :
-    BaseSession( bindingUrl, repositoryId, username, password, verbose ),
+        string password, bool noSslCheck, libcmis::OAuth2DataPtr oauth2,
+        bool verbose ) throw ( libcmis::Exception ) :
+    BaseSession( bindingUrl, repositoryId, username, password, noSslCheck, oauth2, verbose ),
     m_servicesUrls( ),
     m_navigationService( NULL ),
     m_objectService( NULL ),
@@ -284,6 +285,7 @@ map< string, SoapResponseCreator > WSSession::getResponseMapping( )
     mapping[ "{" + string( NS_CMISM_URL ) + "}checkOutResponse" ] = &CheckOutResponse::create;
     mapping[ "{" + string( NS_CMISM_URL ) + "}checkInResponse" ] = &CheckInResponse::create;
     mapping[ "{" + string( NS_CMISM_URL ) + "}getAllVersionsResponse" ] = &GetAllVersionsResponse::create;
+    mapping[ "{" + string( NS_CMISM_URL ) + "}getRenditionsResponse" ] = &GetRenditionsResponse::create;
 
     return mapping;
 }
@@ -336,16 +338,25 @@ VersioningService& WSSession::getVersioningService( )
     return *m_versioningService;
 }
 
-list< libcmis::RepositoryPtr > WSSession::getRepositories( string url, string username,
-        string password, bool verbose ) throw ( libcmis::Exception )
-{
-    WSSession session( url, string(), username, password, verbose );
-    return session.m_repositories;
-}
-
 libcmis::RepositoryPtr WSSession::getRepository( ) throw ( libcmis::Exception )
 {
     return getRepositoryService( ).getRepositoryInfo( m_repositoryId );
+}
+
+bool WSSession::setRepository( string repositoryId )
+{
+    bool success = false;
+    try
+    {
+        libcmis::RepositoryPtr repo = getRepositoryService( ).getRepositoryInfo( repositoryId );
+        if (repo && repo->getId( ) == repositoryId )
+            m_repositoryId = repositoryId;
+        success = true;
+    }
+    catch ( const libcmis::Exception& )
+    {
+    }
+    return success;
 }
 
 libcmis::ObjectPtr WSSession::getObject( string id ) throw ( libcmis::Exception )

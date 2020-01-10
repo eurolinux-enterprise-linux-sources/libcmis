@@ -28,25 +28,85 @@
 #ifndef _SESSION_FACTORY_HXX_
 #define _SESSION_FACTORY_HXX_
 
-#include <list>
+#include <vector>
 #include <map>
 #include <string>
 
 #include "exception.hxx"
+#include "oauth2-data.hxx"
 #include "repository.hxx"
 #include "session.hxx"
 
 namespace libcmis
 {
+    /** This callback provides the OAuth2 code or NULL.
+
+        The resulting char* will be freed later.
+      */
+    typedef char* ( *OAuth2AuthCodeProvider )( const char* authUrl,
+        const char* username, const char* password );
+
+    class AuthProvider 
+    {
+        public:
+            virtual ~AuthProvider() { };
+
+            /** The function implementing it needs to fill the username and password parameters
+                and return true. Returning false means that the user cancelled the authentication
+                and will fail the query.
+              */
+            virtual bool authenticationQuery( std::string& username, std::string& password ) = 0;
+    };
+    typedef ::boost::shared_ptr< AuthProvider > AuthProviderPtr;
+  
+    /** Handler class used to request user input when an invalid SSL certificate is encountered.
+     */ 
+    class CertValidationHandler
+    {
+        public:
+             virtual ~CertValidationHandler( ){ };
+
+             /** This function is provided a vector of X509 certificates encoded in base64, with
+                 the first certificate being the one to validate, and the others are the issuers
+                 chain.
+
+                 The result will be stored in the session object to avoid asking several times
+                 to validate the same certificate.
+
+                 \result true if the certificate should be ignored, false to fail the request.
+               */
+             virtual bool validateCertificate( std::vector< std::string > certificatesChain ) = 0;
+    };
+    typedef ::boost::shared_ptr< CertValidationHandler > CertValidationHandlerPtr;
+
     class SessionFactory
     {
         private:
+
+            static AuthProviderPtr s_authProvider;
+
             static std::string s_proxy;
             static std::string s_noProxy;
             static std::string s_proxyUser;
             static std::string s_proxyPass;
 
+            static OAuth2AuthCodeProvider s_oauth2AuthCodeProvider;
+
+            static CertValidationHandlerPtr s_certValidationHandler;
+
         public:
+
+            static void setAuthenticationProvider( AuthProviderPtr provider ) { s_authProvider = provider; }
+            static AuthProviderPtr getAuthenticationProvider( ) { return s_authProvider; }
+            
+            static void setOAuth2AuthCodeProvider( OAuth2AuthCodeProvider provider ) { s_oauth2AuthCodeProvider = provider; }
+            static OAuth2AuthCodeProvider getOAuth2AuthCodeProvider( ) { return s_oauth2AuthCodeProvider; }
+
+            /** Set the handler to ask the user what to do with invalid SSL certificates. If not set,
+                every invalid certificate will raise an exception.
+              */
+            static void setCertificateValidationHandler( CertValidationHandlerPtr handler ) { s_certValidationHandler = handler; }
+            static CertValidationHandlerPtr getCertificateValidationHandler( ) { return s_certValidationHandler; }
 
             static void setProxySettings( std::string proxy,
                     std::string noProxy,
@@ -67,9 +127,19 @@ namespace libcmis
                     std::string username = std::string( ),
                     std::string password = std::string( ),
                     std::string repositoryId = std::string( ),
-                    bool verbose = false ) throw ( Exception );
+                    bool noSslCheck = false,
+                    OAuth2DataPtr oauth2 = OAuth2DataPtr(), bool verbose = false ) throw ( Exception );
 
-            static std::list< RepositoryPtr > getRepositories( std::string bindingUrl,
+            /**
+                Gets the informations of the repositories on the server.
+
+                \deprecated
+                    Since libcmis 0.4.0, this helper function simply creates a session
+                    using the createSession function with no repository and then calls
+                    getRepositories on the resulting session.
+                    Kept only for backward API compatibility.
+              */
+            static std::vector< RepositoryPtr > getRepositories( std::string bindingUrl,
                     std::string username = std::string( ),
                     std::string password = std::string( ),
                     bool verbose = false ) throw ( Exception );

@@ -53,9 +53,11 @@ namespace libcmis
             std::vector< long > m_longValues;
             std::vector< double > m_doubleValues;
             std::vector< boost::posix_time::ptime > m_dateTimeValues;
+        
+        protected:
+            Property( );
 
         public:
-
             /** Property constructor allowing to use different values for the id and names.
               */
             Property( PropertyTypePtr propertyType, std::vector< std::string > strValues );
@@ -63,19 +65,23 @@ namespace libcmis
             ~Property( ){ }
 
             PropertyTypePtr getPropertyType( ) { return m_propertyType; }
-
+        
             std::vector< boost::posix_time::ptime > getDateTimes( ) { return m_dateTimeValues; }
             std::vector< bool > getBools( ) { return m_boolValues; }
             std::vector< std::string > getStrings( ) { return m_strValues; }
             std::vector< long > getLongs( ) { return m_longValues; }
             std::vector< double > getDoubles( ) { return m_doubleValues; }
-
+            
+            void setPropertyType( PropertyTypePtr propertyType);
             void setValues( std::vector< std::string > strValues );
 
             void toXml( xmlTextWriterPtr writer );
+
+            std::string toString( );
     };
     typedef ::boost::shared_ptr< Property > PropertyPtr;
-    
+    typedef std::map< std::string, libcmis::PropertyPtr > PropertyPtrMap;    
+   
     PropertyPtr parseProperty( xmlNodePtr node, boost::shared_ptr< ObjectType > objectType );
 }
 

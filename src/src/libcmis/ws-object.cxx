@@ -29,6 +29,7 @@
 #include "ws-object.hxx"
 
 using namespace std;
+using libcmis::PropertyPtrMap;
 
 WSObject::WSObject( WSSession* session ) :
     libcmis::Object( session )
@@ -60,8 +61,23 @@ WSObject& WSObject::operator=( const WSObject& copy )
     return *this;
 }
 
+vector< libcmis::RenditionPtr > WSObject::getRenditions( string filter ) throw ( libcmis::Exception )
+{
+    // Check that the server supports that optional feature. There is no need to check it
+    // when getting the object as we may get them by shear luck
+    libcmis::RepositoryPtr repo = getSession( )->getRepository( );
+    bool isCapable = repo && repo->getCapability( libcmis::Repository::Renditions ) == "read";
+
+    if ( m_renditions.empty() && isCapable )
+    {
+        string repoId = getSession( )->getRepositoryId( );
+        m_renditions = getSession( )->getObjectService( ).getRenditions( repoId, this->getId( ), filter );
+    }
+    return m_renditions;
+}
+
 libcmis::ObjectPtr WSObject::updateProperties(
-        const map< string, libcmis::PropertyPtr >& properties ) throw ( libcmis::Exception )
+        const PropertyPtrMap& properties ) throw ( libcmis::Exception )
 {
     string repoId = getSession( )->getRepositoryId( );
     return getSession( )->getObjectService( ).updateProperties( repoId, this->getId( ), properties, this->getChangeToken( ) );

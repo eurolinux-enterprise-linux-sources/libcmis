@@ -36,7 +36,7 @@
 #include "xml-utils.hxx"
 
 using namespace std;
-
+using namespace libcmis;
 
 AtomDocument::AtomDocument( AtomPubSession* session ) :
     libcmis::Object( session ),
@@ -122,7 +122,7 @@ vector< libcmis::FolderPtr > AtomDocument::getParents( ) throw ( libcmis::Except
     return parents;
 }
 
-boost::shared_ptr< istream > AtomDocument::getContentStream( ) throw ( libcmis::Exception )
+boost::shared_ptr< istream > AtomDocument::getContentStream( string /*streamId*/ ) throw ( libcmis::Exception )
 {
     if ( getAllowableActions().get() && !getAllowableActions()->isAllowed( libcmis::ObjectAction::GetContentStream ) )
         throw libcmis::Exception( string( "GetContentStream is not allowed on document " ) + getId() );
@@ -237,8 +237,8 @@ libcmis::DocumentPtr AtomDocument::checkOut( ) throw ( libcmis::Exception )
     xmlTextWriterStartDocument( writer, NULL, NULL, NULL );
 
     // Create a document with only the needed properties
-    map< string, libcmis::PropertyPtr > props; 
-    map< string, libcmis::PropertyPtr >::iterator it = getProperties( ).find( string( "cmis:objectId" ) );
+    PropertyPtrMap props; 
+    PropertyPtrMap::iterator it = getProperties( ).find( string( "cmis:objectId" ) );
     if ( it != getProperties( ).end( ) )
     {
         props.insert( *it );
@@ -314,7 +314,7 @@ void AtomDocument::cancelCheckout( ) throw ( libcmis::Exception )
 }
 
 libcmis::DocumentPtr AtomDocument::checkIn( bool isMajor, string comment,
-                            const map< string, libcmis::PropertyPtr >& properties,
+                            const PropertyPtrMap& properties,
                             boost::shared_ptr< ostream > stream, string contentType, string ) throw ( libcmis::Exception )
 {
     if ( ( getAllowableActions( ).get() && !getAllowableActions()->isAllowed( libcmis::ObjectAction::CheckIn ) ) )

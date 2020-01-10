@@ -38,16 +38,13 @@ class AtomPubSession : public BaseSession
 
     public:
         AtomPubSession( std::string sAtomPubUrl, std::string repositoryId,
-                        std::string username, std::string password,
+                        std::string username, std::string password, bool noSslCheck = false,
+                        libcmis::OAuth2DataPtr oauth2 = libcmis::OAuth2DataPtr(),
                         bool verbose =false ) throw ( libcmis::Exception );
         AtomPubSession( const AtomPubSession& copy );
         ~AtomPubSession( );
 
         AtomPubSession& operator=( const AtomPubSession& copy );
-
-        static std::list< libcmis::RepositoryPtr > getRepositories( std::string url,
-                        std::string username, std::string password,
-                        bool verbose = false ) throw ( libcmis::Exception );
 
         AtomRepositoryPtr getAtomRepository( ) throw ( libcmis::Exception );
 
@@ -59,13 +56,20 @@ class AtomPubSession : public BaseSession
 
         virtual libcmis::RepositoryPtr getRepository( ) throw ( libcmis::Exception );
 
+        virtual bool setRepository( std::string repositoryId );
+
         virtual libcmis::ObjectPtr getObject( std::string id ) throw ( libcmis::Exception );
         
         virtual libcmis::ObjectPtr getObjectByPath( std::string path ) throw ( libcmis::Exception );
 
         virtual libcmis::ObjectTypePtr getType( std::string id ) throw ( libcmis::Exception );
 
-    private:
+    protected:
+
+        /** Defaults constructor shouldn't be used
+          */
+        AtomPubSession( ); 
+        void parseServiceDocument( const std::string& buf ) throw ( libcmis::Exception );
 
         void initialize( ) throw ( libcmis::Exception );
 };

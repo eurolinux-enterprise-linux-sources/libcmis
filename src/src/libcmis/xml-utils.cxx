@@ -63,6 +63,7 @@ namespace
 namespace libcmis
 {
     EncodedData::EncodedData( FILE* stream ) :
+        m_writer( NULL ),
         m_stream( stream ),
         m_outStream( NULL ),
         m_encoding( ),
@@ -72,8 +73,9 @@ namespace libcmis
         m_missingBytes( 0 )
     {
     }
-    
+
     EncodedData::EncodedData( ostream* stream ) :
+        m_writer( NULL ),
         m_stream( NULL ),
         m_outStream( stream ),
         m_encoding( ),
@@ -84,7 +86,20 @@ namespace libcmis
     {
     }
 
+    EncodedData::EncodedData( xmlTextWriterPtr writer ) :
+        m_writer( writer ),
+        m_stream( NULL ),
+        m_outStream( NULL ),
+        m_encoding( ),
+        m_decode( false ),
+        m_pendingValue( 0 ),
+        m_pendingRank( 0 ),
+        m_missingBytes( 0 )
+    {
+    }
+
     EncodedData::EncodedData( const EncodedData& copy ) :
+        m_writer( copy.m_writer ),
         m_stream( copy.m_stream ),
         m_outStream( copy.m_outStream ),
         m_encoding( copy.m_encoding ),
@@ -99,6 +114,7 @@ namespace libcmis
     {
         if ( this != &copy )
         {
+            m_writer = copy.m_writer;
             m_stream = copy.m_stream;
             m_outStream = copy.m_outStream;
             m_encoding = copy.m_encoding;
@@ -112,7 +128,9 @@ namespace libcmis
 
     void EncodedData::write( void* buf, size_t size, size_t nmemb )
     {
-        if ( m_stream )
+        if ( m_writer )
+            xmlTextWriterWriteRawLen( m_writer, ( xmlChar* )buf, size * nmemb );
+        else if ( m_stream )
             fwrite( buf, size, nmemb, m_stream );
         else if ( m_outStream )
             m_outStream->write( ( const char* )buf, size * nmemb );
@@ -352,6 +370,7 @@ namespace libcmis
 
     boost::posix_time::ptime parseDateTime( string dateTimeStr )
     {
+        boost::posix_time::ptime t( boost::date_time::not_a_date_time );
         // Get the time zone offset
         boost::posix_time::time_duration tzOffset( boost::posix_time::duration_from_string( "+00:00" ) );
 
@@ -377,7 +396,15 @@ namespace libcmis
                 
                 // Check the validity of the TZ value
                 string tzStr = timeStr.substr( tzPos );
-                tzOffset = boost::posix_time::time_duration( boost::posix_time::duration_from_string( tzStr.c_str() ) );
+                try
+                {
+                    tzOffset = boost::posix_time::time_duration( boost::posix_time::duration_from_string( tzStr.c_str() ) );
+                }
+                catch ( const std::exception& )
+                {
+                    // Error converting, not a datetime 
+                    return t;
+                }
 
             }
             else
@@ -391,7 +418,6 @@ namespace libcmis
             noTzStr.erase( pos, 1 );
             pos = noTzStr.find_first_of( ":-" );
         }
-        boost::posix_time::ptime t( boost::date_time::not_a_date_time );
         try
         {
             t = boost::posix_time::from_iso_string( noTzStr.c_str( ) );
@@ -498,8 +524,12 @@ namespace libcmis
         sha1.get_digest( digest );
 
         stringstream out;
+        // Setup writing mode. Every number must produce eight
+        // hexadecimal digits, including possible leading 0s, or we get
+        // less than 40 digits as result.
+        out << hex << setfill('0') << right;
         for ( int i = 0; i < 5; ++i )
-            out << hex << digest[i];
+            out << setw(8) << digest[i];
         return out.str();
     }
 
@@ -511,5 +541,42 @@ namespace libcmis
             lower[i] = ::tolower( sText[i] );
         }
         return lower;
+    }
+
+    int stringstream_write_callback( void * context, const char * s, int len )
+    {
+        stringstream * ss=static_cast< stringstream * >( context );
+        if ( ss )
+        {
+            ss->write( s, len );
+            return len;
+        }
+        return 0;
+    }
+
+    string escape( string str )
+    {
+#if LIBCURL_VERSION_VALUE >= 0x070F04
+        char* escaped = curl_easy_escape( NULL, str.c_str(), str.length() );
+#else
+        char* escaped = curl_escape( str.c_str(), str.length() );
+#endif
+        string result = escaped;
+        curl_free( escaped );
+
+        return result;
+    }
+
+    string unescape( string str )
+    {
+#if LIBCURL_VERSION_VALUE >= 0x070F04
+        char* unescaped = curl_easy_unescape( NULL, str.c_str(), str.length(), NULL );
+#else
+        char* unescaped = curl_unescape( str.c_str(), str.length() );
+#endif
+        string result = unescaped;
+        curl_free( unescaped );
+
+        return result;
     }
 }

@@ -157,11 +157,11 @@ void AtomObjectType::refreshImpl( xmlDocPtr doc ) throw ( libcmis::Exception )
         catch ( const CurlException& e )
         {
             if ( ( e.getErrorCode( ) == CURLE_HTTP_RETURNED_ERROR ) &&
-                 ( string::npos != e.getErrorMessage( ).find( "404" ) ) )
+                 ( e.getHttpStatus( ) == 404 ) )
             {
                 string msg = "No such type: ";
                 msg += getId( );
-                throw libcmis::Exception( msg );
+                throw libcmis::Exception( msg, "objectNotFound" );
             }
             else
                 throw e.getCmisException( );

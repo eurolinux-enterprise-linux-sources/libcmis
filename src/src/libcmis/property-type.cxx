@@ -142,6 +142,19 @@ namespace libcmis
         return *this;
     }
 
+    void PropertyType::setTypeFromJsonType( string jsonType )
+    {
+        if ( jsonType == "json_bool" )
+            m_type = Bool;
+        else if ( jsonType == "json_double" )
+            m_type = Decimal;
+        else if ( jsonType == "json_int" )
+            m_type = Integer;
+        else if ( jsonType == "json_datetime" )
+            m_type = DateTime;
+        else m_type = String;
+    }
+
     void PropertyType::setTypeFromXml( string typeStr )
     {
         // Default to string

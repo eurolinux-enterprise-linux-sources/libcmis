@@ -30,6 +30,7 @@
 #include "folder.hxx"
 
 using namespace std;
+using libcmis::PropertyPtrMap;
 
 namespace libcmis
 {
@@ -58,27 +59,19 @@ namespace libcmis
 
     string Document::getContentType( )
     {
-        string contentType;
-        map< string, libcmis::PropertyPtr >::const_iterator it = getProperties( ).find( string( "cmis:contentStreamMimeType" ) );
-        if ( it != getProperties( ).end( ) && !it->second->getStrings( ).empty( ) )
-            contentType = it->second->getStrings( ).front( );
-        return contentType;
+        return getStringProperty( "cmis:contentStreamMimeType" );
     }
 
     string Document::getContentFilename( )
     {
-        string contentFilename;
-        map< string, libcmis::PropertyPtr >::const_iterator it = getProperties( ).find( string( "cmis:contentStreamFileName" ) );
-        if ( it != getProperties( ).end( ) && !it->second->getStrings( ).empty( ) )
-            contentFilename = it->second->getStrings( ).front( );
-        return contentFilename;
+        return getStringProperty( "cmis:contentStreamFileName" );
     }
 
     long Document::getContentLength( )
     {
         long contentLength = 0;
-        map< string, libcmis::PropertyPtr >::const_iterator it = getProperties( ).find( string( "cmis:contentStreamLength" ) );
-        if ( it != getProperties( ).end( ) && !it->second->getStrings( ).empty( ) )
+        PropertyPtrMap::const_iterator it = getProperties( ).find( string( "cmis:contentStreamLength" ) );
+        if ( it != getProperties( ).end( )  && it->second != NULL && !it->second->getLongs( ).empty( ) )
             contentLength = it->second->getLongs( ).front( );
         return contentLength;
     }
