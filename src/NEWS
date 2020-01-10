@@ -1,0 +1,57 @@
+0.1.0
+
+  * Generic
+    * Anonymous connection
+  * AtomPub binding
+    * Get the content hierarchy using the down relations
+    * Get the content of a document
+    * Query nodes by ID
+
+0.2.0
+
+  * Generic
+    * Support for authentication in the API
+    * Callback for providing interactive authentication
+    * Added API to create documents and folders
+    * Added API to delete documents and folders
+  * AtomPub binding
+    * Handle all the authentication methods that can be handled by
+      libcurl like Basic, NTLM...
+    * Decode base64 encoded content sent by SharePoint
+    * Set the content of a document
+    * Query nodes by path
+    * Get the allowable actions for a node
+    * Object properties can be updated
+    * Query object types
+    * Creation of folders and documents
+    * Deletion of folders and documents
+
+0.2.1
+
+  * Fixed documentation distribution
+
+0.2.2
+
+  * Fixed soname for the library
+  * Allow building against libcurl 7.13.1
+
+0.2.3
+
+  * Fixed SharePoint support
+  * Conditional build of man page
+
+0.3.0
+
+  * Added Document::checkOut(), Document::cancelCheckout() and Document::checkIn()
+  * Added Object::move( ) -- Grau Data
+  * Fixes for xcmis and cloudoku.com -- Grau Data
+  * Added Document::getAllVersions( )
+  * WebService binding implementation
+  * Session factory automatically detects which binding to use
+  * C wrapper API
+  * Unit tests are now split between quick ones and the ones needing a CMIS server
+
+0.3.1
+  * Added support for proxy configuration
+  * Fixed man page generation
+  * Misc code cleanup / fixes

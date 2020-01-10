@@ -1,0 +1,25 @@
+From 1785bd837ad159f18588f470508627f127d42237 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?C=C3=A9dric=20Bosdonnat?= <cbosdo@users.sourceforge.net>
+Date: Mon, 8 Apr 2013 11:25:55 +0200
+Subject: [PATCH] fixed libcmis-c.pc to point to versioned libcmis pc file
+
+---
+ libcmis-c.pc.in | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/libcmis-c.pc.in b/libcmis-c.pc.in
+index 82ac1b1..48268a5 100644
+--- a/libcmis-c.pc.in
++++ b/libcmis-c.pc.in
+@@ -6,7 +6,7 @@ includedir=@includedir@
+ Name: libcmis
+ Description: CMIS protocol C client library
+ Version: @VERSION@
+-Requires: libcmis libcurl libxml-2.0
++Requires: libcmis-@LIBCMIS_API_VERSION@ libcurl libxml-2.0
+ Libs: -L${libdir} -lcmis-c-@LIBCMIS_API_VERSION@
+ Cflags: -I${includedir}/libcmis-c-@LIBCMIS_API_VERSION@
+ 
+-- 
+1.7.11.7
+

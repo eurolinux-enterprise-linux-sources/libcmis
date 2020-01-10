@@ -1,0 +1,75 @@
+From 3ea92e49821638be039be7085659af160a6d4ebf Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?C=C3=A9dric=20Bosdonnat?= <cbosdo@users.sourceforge.net>
+Date: Mon, 22 Apr 2013 15:45:26 +0200
+Subject: [PATCH 3/3] Init protocols should be done right after resetting curl
+ handle (cherry picked from commit e75bd2548101b8681edf13ea085d62634b7668cf)
+
+Conflicts:
+	src/libcmis/base-session.cxx
+---
+ src/libcmis/base-session.cxx | 7 ++++---
+ 1 file changed, 4 insertions(+), 3 deletions(-)
+
+diff --git a/src/libcmis/base-session.cxx b/src/libcmis/base-session.cxx
+index 9d08edc..478d0de 100644
+--- a/src/libcmis/base-session.cxx
++++ b/src/libcmis/base-session.cxx
+@@ -123,7 +123,6 @@ BaseSession::BaseSession( string atomPubUrl, string repositoryId, string usernam
+ {
+     curl_global_init( CURL_GLOBAL_ALL );
+     m_curlHandle = curl_easy_init( );
+-    initProtocols();
+ }
+ 
+ BaseSession::BaseSession( const BaseSession& copy ) :
+@@ -143,7 +142,6 @@ BaseSession::BaseSession( const BaseSession& copy ) :
+     // Not sure how sharing curl handles is safe.
+     curl_global_init( CURL_GLOBAL_ALL );
+     m_curlHandle = curl_easy_init( );
+-    initProtocols();
+ }
+ 
+ BaseSession& BaseSession::operator=( const BaseSession& copy )
+@@ -163,7 +161,6 @@ BaseSession& BaseSession::operator=( const BaseSession& copy )
+     // Not sure how sharing curl handles is safe.
+     curl_global_init( CURL_GLOBAL_ALL );
+     m_curlHandle = curl_easy_init( );
+-    initProtocols();
+ 
+     return *this;
+ }
+@@ -223,6 +220,7 @@ libcmis::HttpResponsePtr BaseSession::httpGetRequest( string url ) throw ( CurlE
+ {
+     // Reset the handle for the request
+     curl_easy_reset( m_curlHandle );
++    initProtocols( );
+ 
+     libcmis::HttpResponsePtr response( new libcmis::HttpResponse( ) );
+ 
+@@ -255,6 +253,7 @@ libcmis::HttpResponsePtr BaseSession::httpPutRequest( string url, istream& is, v
+ {
+     // Reset the handle for the request
+     curl_easy_reset( m_curlHandle );
++    initProtocols( );
+ 
+     libcmis::HttpResponsePtr response( new libcmis::HttpResponse( ) );
+ 
+@@ -320,6 +319,7 @@ libcmis::HttpResponsePtr BaseSession::httpPostRequest( string url, istringstream
+ {
+     // Reset the handle for the request
+     curl_easy_reset( m_curlHandle );
++    initProtocols( );
+ 
+     libcmis::HttpResponsePtr response( new libcmis::HttpResponse( ) );
+ 
+@@ -385,6 +385,7 @@ void BaseSession::httpDeleteRequest( string url ) throw ( CurlException )
+ {
+     // Reset the handle for the request
+     curl_easy_reset( m_curlHandle );
++    initProtocols( );
+ 
+     curl_easy_setopt( m_curlHandle, CURLOPT_CUSTOMREQUEST, "DELETE" );
+     httpRunRequest( url );
+-- 
+1.8.1.4
+
